@@ -16,10 +16,35 @@ export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/cache/pip}"
 
 mkdir -p "$XDG_CACHE_HOME" "$HF_HOME" "$HUGGINGFACE_HUB_CACHE" "$TORCH_HOME" "$TRITON_CACHE_DIR" "$VLLM_CACHE_ROOT" /logs
 
+has_model_arg() {
+  local arg
+  for arg in "$@"; do
+    if [ "$arg" = "--model" ] || [[ "$arg" == --model=* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 mode="${1:-serve}"
 case "$mode" in
   serve)
     shift || true
+    if ! has_model_arg "$@"; then
+      cat >&2 <<'EOF'
+[entrypoint] No vLLM model was provided.
+
+Pass the model at launch time instead of baking it into .env, for example:
+
+  python scripts/r9700-vllm.py serve --model /models/YourModel --tensor-parallel-size 2
+
+or:
+
+  python scripts/r9700-vllm.py serve /models/YourModel --tensor-parallel-size 2
+EOF
+      exit 2
+    fi
+
     /usr/local/bin/verify-rocm.py --warn-only
     launch_script="${VLLM_LAUNCH_SCRIPT:-/opt/r9700-vllm/launcher/launch_vllm.py}"
     if [ -f "$launch_script" ]; then
