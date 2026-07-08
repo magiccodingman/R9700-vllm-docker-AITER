@@ -149,9 +149,13 @@ print('AITER module spec:', spec.origin)
 PY
 
 # Clone vLLM, apply the pinned RDNA4/R9700 patch stack, then build/install it for ROCm.
-# Use --no-deps here so pip does not replace ROCm torch/triton with PyPI
-# CUDA/NVIDIA wheels while resolving vLLM's broad dependency tree.
-RUN cd /opt/r9700-vllm/src \
+# Build vLLM itself with --no-deps so pip does not replace ROCm torch/triton
+# with PyPI CUDA/NVIDIA wheels. After the wheel is installed, read vLLM's own
+# package metadata, filter only CUDA/NVIDIA-sensitive package names, and install
+# the remaining runtime dependencies under a constraints file that pins the ROCm
+# torch/triton stack already present in the image.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    cd /opt/r9700-vllm/src \
     && rm -rf vllm \
     && git clone "${VLLM_REPO}" vllm \
     && cd vllm \
@@ -169,6 +173,58 @@ RUN cd /opt/r9700-vllm/src \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
     && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" PYTORCH_ROCM_ARCH="${PYTORCH_ROCM_ARCH}" \
     && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
+    && python - <<'PY'
+import importlib.metadata as md
+from pathlib import Path
+
+pins = []
+for name in ('torch', 'torchvision', 'torchaudio', 'triton', 'triton-kernels'):
+    try:
+        pins.append(f'{name}=={md.version(name)}')
+    except md.PackageNotFoundError:
+        pass
+Path('/tmp/rocm-python-constraints.txt').write_text('\n'.join(pins) + '\n')
+print('ROCm Python constraints:')
+print('\n'.join(pins))
+PY
+    && python - <<'PY'
+import importlib.metadata as md
+from packaging.requirements import Requirement
+from pathlib import Path
+
+skip_exact = {
+    'torch',
+    'torchvision',
+    'torchaudio',
+    'triton',
+    'triton-kernels',
+    'cuda-toolkit',
+    'cuda-bindings',
+    'cuda-pathfinder',
+}
+skip_prefixes = ('nvidia-', 'cuda-')
+requirements = []
+for raw in md.distribution('vllm').requires or []:
+    req = Requirement(raw)
+    name = req.name.lower().replace('_', '-')
+    if name in skip_exact or any(name.startswith(prefix) for prefix in skip_prefixes):
+        print(f'Skipping ROCm/CUDA-sensitive dependency: {raw}')
+        continue
+    if req.marker is not None and not req.marker.evaluate({'extra': ''}):
+        continue
+    requirements.append(raw)
+
+Path('/tmp/vllm-runtime-requirements.txt').write_text('\n'.join(requirements) + '\n')
+print('vLLM runtime dependency count:', len(requirements))
+for req in requirements:
+    print(req)
+PY
+    && python -m pip install --break-system-packages \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      --extra-index-url "${PYTORCH_INDEX_URL}" \
+      --constraint /tmp/rocm-python-constraints.txt \
+      -r /tmp/vllm-runtime-requirements.txt \
     && python - <<'PY'
 import vllm
 print('vLLM loaded from:', vllm.__file__)
