@@ -95,7 +95,13 @@ PY
 # AITER's setup.py may shell out to `python -m pip install flydsl==...`.
 # PIP_BREAK_SYSTEM_PACKAGES=1 above lets those internal pip subprocesses work
 # in this sealed Docker image without patching upstream setup.py.
-RUN cd /opt/r9700-vllm/src \
+#
+# Do not let `setup.py develop` use old easy_install dependency processing.
+# It can treat binary console scripts from wheel eggs as UTF-8 metadata and
+# explode on packages such as ninja. Preinstall the deps with pip, then run
+# develop with --no-deps.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    cd /opt/r9700-vllm/src \
     && rm -rf aiter \
     && git clone --recursive "${AITER_REPO}" aiter \
     && cd aiter \
@@ -103,11 +109,22 @@ RUN cd /opt/r9700-vllm/src \
     && git submodule sync \
     && git submodule update --init --recursive \
     && git rev-parse HEAD | tee /opt/r9700-vllm/build-info/aiter.commit.txt \
+    && python -m pip install --break-system-packages \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      "flydsl==0.2.2" \
+      "einops" \
+      "pandas" \
+      "pybind11>=3.0.1" \
+      "python-dateutil>=2.8.2" \
+      "six>=1.5" \
+      "psutil" \
+      "ninja" \
     && unset SCCACHE_BUCKET SCCACHE_REGION SCCACHE_ENDPOINT SCCACHE_S3_USE_SSL SCCACHE_S3_KEY_PREFIX \
              SCCACHE_IDLE_TIMEOUT SCCACHE_ERROR_LOG SCCACHE_LOG RUSTC_WRAPPER \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
-    && python3 setup.py develop 2>&1 | tee /opt/r9700-vllm/build-info/aiter-build.log \
+    && python3 setup.py develop --no-deps 2>&1 | tee /opt/r9700-vllm/build-info/aiter-build.log \
     && python - <<'PY'
 import aiter
 print('AITER loaded from:', aiter.__file__)
@@ -129,7 +146,7 @@ RUN cd /opt/r9700-vllm/src \
              SCCACHE_IDLE_TIMEOUT SCCACHE_ERROR_LOG SCCACHE_LOG RUSTC_WRAPPER \
              CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
-    && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
+    && export CC=/usr/bin/gcc CXX=/usr/bing++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
     && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" \
     && python -m pip install --break-system-packages --no-build-isolation -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
     && python - <<'PY'
