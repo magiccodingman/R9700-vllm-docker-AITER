@@ -257,7 +257,7 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       certifi charset_normalizer idna \
       aiohappyeyeballs aiosignal attrs frozenlist multidict propcache yarl \
       anyio h11 httpcore click rich shellingham python-dotenv \
-      annotated-doc annotated-types pydantic-core pydantic-extra-types \
+      annotated-doc annotated-types pydantic-core pydantic-extra-types pycountry \
       cffi cryptography pycparser \
       filelock fsspec pyyaml \
       jsonschema-specifications referencing rpds-py \
@@ -281,6 +281,7 @@ import aiohttp
 import anyio
 import httpx
 import jsonschema
+import pycountry
 import referencing
 import tokenizers
 import transformers
@@ -291,6 +292,7 @@ from transformers import MistralCommonBackend, PretrainedConfig
 from vllm.connections import global_http_connection
 print('aiohttp:', aiohttp.__version__)
 print('jsonschema:', jsonschema.__version__)
+print('pycountry import: ok', pycountry.__version__)
 print('tokenizers:', tokenizers.__version__)
 print('transformers:', transformers.__version__)
 print('pydantic extra LanguageAlpha2 import: ok', LanguageAlpha2)
