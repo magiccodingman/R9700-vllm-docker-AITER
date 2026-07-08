@@ -192,7 +192,7 @@ RUN python - <<'PY'
 import importlib.metadata as md
 from pathlib import Path
 
-pins = []
+pins = ['tokenizers==0.22.2']
 for name in ('torch', 'torchvision', 'torchaudio', 'triton', 'triton-kernels', 'numpy'):
     try:
         pins.append(f'{name}=={md.version(name)}')
@@ -269,6 +269,16 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       --retries "${PIP_RETRIES}" \
       accelerate \
     && check-rocm-torch
+
+RUN python - <<'PY'
+import tokenizers
+import transformers
+from transformers import PretrainedConfig
+print('tokenizers:', tokenizers.__version__)
+print('transformers:', transformers.__version__)
+print('transformers PretrainedConfig import: ok')
+PY
+RUN check-rocm-torch
 
 RUN python - <<'PY'
 import vllm
