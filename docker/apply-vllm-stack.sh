@@ -207,7 +207,7 @@ run git checkout -B r9700-c3284-primary "$BASE_COMMIT"
 if apply_unique_no_merges_from_pin "01-ggz14-gdn-kkt-rdna4-tp2" "$GGZ_GDN_PIN" \
   && apply_unique_no_merges_from_pin "02-ggz14-aiter-unified-attn-gfx1201" "$GGZ_AITER_PIN" \
   && apply_unique_no_merges_from_pin "03-ggz14-rocm-fp8-kv-decode-dequant" "$GGZ_FP8_PIN"; then
-  run git tag -f r9700-primary-ok
+  echo "OK: primary stack applied."
   SUMMARY_PRIMARY="success"
 else
   SUMMARY_PRIMARY="failed"
@@ -220,7 +220,7 @@ if [ "$SUMMARY_PRIMARY" = "success" ]; then
   echo "============================================================"
   run git checkout -B r9700-c3284-secondary r9700-c3284-primary
   if apply_unique_no_merges_from_pin "04-ar-fused-rope-fp8-kvcache" "$AR_FUSED_PIN"; then
-    run git tag -f r9700-secondary-ok
+    echo "OK: secondary stack applied."
     SUMMARY_SECONDARY="success"
   else
     SUMMARY_SECONDARY="failed"
@@ -236,7 +236,7 @@ if [ "$SUMMARY_SECONDARY" = "success" ]; then
   echo "============================================================"
   run git checkout -B r9700-c3284-splitkv r9700-c3284-secondary
   if apply_unique_no_merges_from_pin "05-feiyehua-rocm-gfx12xx-splitkv" "$FEI_SPLITKV_PIN"; then
-    run git tag -f r9700-splitkv-ok
+    echo "OK: splitKV stack applied."
     SUMMARY_SPLITKV="success"
   else
     SUMMARY_SPLITKV="failed"
