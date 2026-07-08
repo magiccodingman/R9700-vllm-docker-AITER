@@ -146,7 +146,7 @@ RUN cd /opt/r9700-vllm/src \
              SCCACHE_IDLE_TIMEOUT SCCACHE_ERROR_LOG SCCACHE_LOG RUSTC_WRAPPER \
              CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
-    && export CC=/usr/bin/gcc CXX=/usr/bing++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
+    && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
     && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" \
     && python -m pip install --break-system-packages --no-build-isolation -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
     && python - <<'PY'
