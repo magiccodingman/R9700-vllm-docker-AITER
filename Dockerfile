@@ -223,7 +223,7 @@ for req in requirements:
 PY
 
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
-    python -m pip install --break-system-packages \
+    python -m pip install --break-system-packages --ignore-installed \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
       --extra-index-url "${PYTORCH_INDEX_URL}" \
