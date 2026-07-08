@@ -16,6 +16,9 @@ ARG VLLM_FINAL_BRANCH=r9700-c3284-secondary
 ARG LAUNCHER_REPO=https://github.com/magiccodingman/VllmLaunchScriptR9700.git
 ARG LAUNCHER_REF=main
 ARG MAX_JOBS=8
+ARG PYTORCH_ROCM_ARCH=gfx1201
+ARG PIP_DEFAULT_TIMEOUT=7200
+ARG PIP_RETRIES=100
 
 ENV ROCM_PATH=/opt/rocm \
     HIP_PATH=/opt/rocm \
@@ -28,6 +31,12 @@ ENV ROCM_PATH=/opt/rocm \
     TRITON_CACHE_DIR=/cache/triton \
     VLLM_CACHE_ROOT=/cache/vllm \
     PIP_CACHE_DIR=/cache/pip \
+    PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH} \
+    PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
+    PIP_RETRIES=${PIP_RETRIES} \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_PROGRESS_BAR=off \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     VLLM_WORKSPACE=/opt/r9700-vllm
@@ -55,12 +64,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # System Python only. No venv. Do not upgrade apt-owned Python build tools
 # such as pip/setuptools/wheel/packaging with pip; Debian packages often lack
 # wheel RECORD metadata, so pip cannot uninstall them cleanly.
-RUN python -m pip install --break-system-packages --index-url "${PYTORCH_INDEX_URL}" ${PYTORCH_PACKAGES} \
-    && python -m pip install --break-system-packages --force-reinstall --ignore-installed --no-cache-dir \
+#
+# PyTorch ROCm wheels are huge, so this uses long pip timeouts/retries and a
+# BuildKit cache mount. Once the torch layer succeeds, later build failures do
+# not force another multi-GB torch download.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages \
+      --index-url "${PYTORCH_INDEX_URL}" \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      ${PYTORCH_PACKAGES}
+
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages --force-reinstall --ignore-installed \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
       --extra-index-url https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/ \
       "triton==3.7.0" \
       "triton-kernels==1.0.0" \
-    && python -m pip install --break-system-packages --ignore-installed --no-cache-dir "numpy==2.1.3" \
+    && python -m pip install --break-system-packages --ignore-installed \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      "numpy==2.1.3" \
     && python - <<'PY'
 import torch
 print('torch:', torch.__version__)
@@ -68,8 +93,29 @@ print('torch file:', torch.__file__)
 print('HIP:', torch.version.hip)
 PY
 
+# vLLM is installed with --no-build-isolation so the build backend dependencies
+# must already exist in the system Python environment.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      "setuptools-rust"
+
 # Build/install AITER from the exact commit used in the manual process.
-RUN cd /opt/r9700-vllm/src \
+# AITER's setup.py may shell out to `python -m pip install flydsl==...`.
+# PIP_BREAK_SYSTEM_PACKAGES=1 above lets those internal pip subprocesses work
+# in this sealed Docker image without patching upstream setup.py.
+#
+# Do not let `setup.py develop` use old easy_install dependency processing.
+# It can treat binary console scripts from wheel eggs as UTF-8 metadata and
+# explode on packages such as ninja. Preinstall the deps with pip, then run
+# develop with --no-deps.
+#
+# Do not `import aiter` during docker build. Importing AITER can trigger JIT/GPU
+# arch detection through rocminfo, and docker build does not have the runtime
+# /dev/kfd and /dev/dri device wiring from Compose.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    cd /opt/r9700-vllm/src \
     && rm -rf aiter \
     && git clone --recursive "${AITER_REPO}" aiter \
     && cd aiter \
@@ -77,18 +123,36 @@ RUN cd /opt/r9700-vllm/src \
     && git submodule sync \
     && git submodule update --init --recursive \
     && git rev-parse HEAD | tee /opt/r9700-vllm/build-info/aiter.commit.txt \
+    && python -m pip install --break-system-packages \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      "flydsl==0.2.2" \
+      "einops" \
+      "pandas" \
+      "pybind11>=3.0.1" \
+      "python-dateutil>=2.8.2" \
+      "six>=1.5" \
+      "psutil" \
+      "ninja" \
     && unset SCCACHE_BUCKET SCCACHE_REGION SCCACHE_ENDPOINT SCCACHE_S3_USE_SSL SCCACHE_S3_KEY_PREFIX \
              SCCACHE_IDLE_TIMEOUT SCCACHE_ERROR_LOG SCCACHE_LOG RUSTC_WRAPPER \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
-    && python3 setup.py develop 2>&1 | tee /opt/r9700-vllm/build-info/aiter-build.log \
+    && python3 setup.py develop --no-deps 2>&1 | tee /opt/r9700-vllm/build-info/aiter-build.log \
     && python - <<'PY'
-import aiter
-print('AITER loaded from:', aiter.__file__)
+import importlib.metadata as md
+import importlib.util
+print('AITER distribution:', md.version('amd-aiter'))
+spec = importlib.util.find_spec('aiter')
+assert spec is not None, 'aiter module spec not found'
+print('AITER module spec:', spec.origin)
 PY
 
 # Clone vLLM, apply the pinned RDNA4/R9700 patch stack, then build/install it for ROCm.
-RUN cd /opt/r9700-vllm/src \
+# Build vLLM itself with --no-deps so pip does not replace ROCm torch/triton
+# with PyPI CUDA/NVIDIA wheels.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    cd /opt/r9700-vllm/src \
     && rm -rf vllm \
     && git clone "${VLLM_REPO}" vllm \
     && cd vllm \
@@ -104,9 +168,69 @@ RUN cd /opt/r9700-vllm/src \
              CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
-    && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" \
-    && python -m pip install --break-system-packages --no-build-isolation -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
-    && python - <<'PY'
+    && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" PYTORCH_ROCM_ARCH="${PYTORCH_ROCM_ARCH}" \
+    && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log
+
+# After the wheel is installed, read vLLM's own package metadata, filter only
+# CUDA/NVIDIA-sensitive package names, and install the remaining runtime
+# dependencies under a constraints file that pins the ROCm torch/triton stack.
+RUN python - <<'PY'
+import importlib.metadata as md
+from pathlib import Path
+
+pins = []
+for name in ('torch', 'torchvision', 'torchaudio', 'triton', 'triton-kernels'):
+    try:
+        pins.append(f'{name}=={md.version(name)}')
+    except md.PackageNotFoundError:
+        pass
+Path('/tmp/rocm-python-constraints.txt').write_text('\n'.join(pins) + '\n')
+print('ROCm Python constraints:')
+print('\n'.join(pins))
+PY
+
+RUN python - <<'PY'
+import importlib.metadata as md
+from packaging.requirements import Requirement
+from pathlib import Path
+
+skip_exact = {
+    'torch',
+    'torchvision',
+    'torchaudio',
+    'triton',
+    'triton-kernels',
+    'cuda-toolkit',
+    'cuda-bindings',
+    'cuda-pathfinder',
+}
+skip_prefixes = ('nvidia-', 'cuda-')
+requirements = []
+for raw in md.distribution('vllm').requires or []:
+    req = Requirement(raw)
+    name = req.name.lower().replace('_', '-')
+    if name in skip_exact or any(name.startswith(prefix) for prefix in skip_prefixes):
+        print(f'Skipping ROCm/CUDA-sensitive dependency: {raw}')
+        continue
+    if req.marker is not None and not req.marker.evaluate({'extra': ''}):
+        continue
+    requirements.append(raw)
+
+Path('/tmp/vllm-runtime-requirements.txt').write_text('\n'.join(requirements) + '\n')
+print('vLLM runtime dependency count:', len(requirements))
+for req in requirements:
+    print(req)
+PY
+
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      --extra-index-url "${PYTORCH_INDEX_URL}" \
+      --constraint /tmp/rocm-python-constraints.txt \
+      -r /tmp/vllm-runtime-requirements.txt
+
+RUN python - <<'PY'
 import vllm
 print('vLLM loaded from:', vllm.__file__)
 PY
