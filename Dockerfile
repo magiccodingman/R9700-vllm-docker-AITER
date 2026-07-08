@@ -16,6 +16,7 @@ ARG VLLM_FINAL_BRANCH=r9700-c3284-secondary
 ARG LAUNCHER_REPO=https://github.com/magiccodingman/VllmLaunchScriptR9700.git
 ARG LAUNCHER_REF=main
 ARG MAX_JOBS=8
+ARG PYTORCH_ROCM_ARCH=gfx1201
 ARG PIP_DEFAULT_TIMEOUT=7200
 ARG PIP_RETRIES=100
 
@@ -30,6 +31,7 @@ ENV ROCM_PATH=/opt/rocm \
     TRITON_CACHE_DIR=/cache/triton \
     VLLM_CACHE_ROOT=/cache/vllm \
     PIP_CACHE_DIR=/cache/pip \
+    PYTORCH_ROCM_ARCH=${PYTORCH_ROCM_ARCH} \
     PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
     PIP_RETRIES=${PIP_RETRIES} \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
@@ -147,6 +149,8 @@ print('AITER module spec:', spec.origin)
 PY
 
 # Clone vLLM, apply the pinned RDNA4/R9700 patch stack, then build/install it for ROCm.
+# Use --no-deps here so pip does not replace ROCm torch/triton with PyPI
+# CUDA/NVIDIA wheels while resolving vLLM's broad dependency tree.
 RUN cd /opt/r9700-vllm/src \
     && rm -rf vllm \
     && git clone "${VLLM_REPO}" vllm \
@@ -163,8 +167,8 @@ RUN cd /opt/r9700-vllm/src \
              CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
-    && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" \
-    && python -m pip install --break-system-packages --no-build-isolation -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
+    && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" PYTORCH_ROCM_ARCH="${PYTORCH_ROCM_ARCH}" \
+    && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
     && python - <<'PY'
 import vllm
 print('vLLM loaded from:', vllm.__file__)
