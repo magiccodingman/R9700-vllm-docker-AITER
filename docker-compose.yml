@@ -43,11 +43,7 @@ services:
       TORCH_HOME: /cache/torch
       TRITON_CACHE_DIR: /cache/triton
       VLLM_CACHE_ROOT: /cache/vllm
+    # Intentionally no model path here. Pass vLLM args at launch time with:
+    #   python scripts/r9700-vllm.py serve --model /models/YourModel ...
     command:
       - serve
-      - --model
-      - ${MODEL_PATH:-/models/YOUR_MODEL_HERE}
-      - --host
-      - 0.0.0.0
-      - --port
-      - ${VLLM_PORT:-8000}
