@@ -16,6 +16,8 @@ ARG VLLM_FINAL_BRANCH=r9700-c3284-secondary
 ARG LAUNCHER_REPO=https://github.com/magiccodingman/VllmLaunchScriptR9700.git
 ARG LAUNCHER_REF=main
 ARG MAX_JOBS=8
+ARG PIP_DEFAULT_TIMEOUT=1200
+ARG PIP_RETRIES=20
 
 ENV ROCM_PATH=/opt/rocm \
     HIP_PATH=/opt/rocm \
@@ -28,6 +30,10 @@ ENV ROCM_PATH=/opt/rocm \
     TRITON_CACHE_DIR=/cache/triton \
     VLLM_CACHE_ROOT=/cache/vllm \
     PIP_CACHE_DIR=/cache/pip \
+    PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
+    PIP_RETRIES=${PIP_RETRIES} \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_PROGRESS_BAR=off \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     VLLM_WORKSPACE=/opt/r9700-vllm
@@ -55,12 +61,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # System Python only. No venv. Do not upgrade apt-owned Python build tools
 # such as pip/setuptools/wheel/packaging with pip; Debian packages often lack
 # wheel RECORD metadata, so pip cannot uninstall them cleanly.
-RUN python -m pip install --break-system-packages --index-url "${PYTORCH_INDEX_URL}" ${PYTORCH_PACKAGES} \
-    && python -m pip install --break-system-packages --force-reinstall --ignore-installed --no-cache-dir \
+#
+# PyTorch ROCm wheels are huge, so this uses long pip timeouts/retries and a
+# BuildKit cache mount. Once the torch layer succeeds, later build failures do
+# not force another multi-GB torch download.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages \
+      --index-url "${PYTORCH_INDEX_URL}" \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      ${PYTORCH_PACKAGES}
+
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages --force-reinstall --ignore-installed \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
       --extra-index-url https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/ \
       "triton==3.7.0" \
       "triton-kernels==1.0.0" \
-    && python -m pip install --break-system-packages --ignore-installed --no-cache-dir "numpy==2.1.3" \
+    && python -m pip install --break-system-packages --ignore-installed \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      "numpy==2.1.3" \
     && python - <<'PY'
 import torch
 print('torch:', torch.__version__)
