@@ -37,6 +37,21 @@ run() {
   return $rc
 }
 
+configure_git_identity() {
+  echo
+  echo "============================================================"
+  echo "Configuring local Git identity for Docker build cherry-picks"
+  echo "============================================================"
+  local name="${VLLM_STACK_GIT_NAME:-R9700 vLLM Builder}"
+  local email="${VLLM_STACK_GIT_EMAIL:-r9700-vllm-builder@example.invalid}"
+  run git config user.name "$name" || return 1
+  run git config user.email "$email" || return 1
+  run git config commit.gpgsign false || return 1
+  run git config advice.detachedHead false || return 1
+  echo "Git user.name:  $(git config user.name)"
+  echo "Git user.email: $(git config user.email)"
+}
+
 clean_repo_to_base() {
   echo
   echo "============================================================"
@@ -178,6 +193,7 @@ SUMMARY_PRIMARY="not-run"
 SUMMARY_SECONDARY="not-run"
 SUMMARY_SPLITKV="not-run"
 
+configure_git_identity || { echo "FAILED: Could not configure local Git identity."; exit 1; }
 clean_repo_to_base || { echo "FAILED: Could not reset repo to base."; exit 1; }
 fetch_refs || { echo "FAILED: Could not fetch refs."; exit 1; }
 verify_all_pins || { echo "FAILED: Pin verification failed."; exit 1; }
