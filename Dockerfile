@@ -255,6 +255,11 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       --constraint /tmp/rocm-python-constraints.txt \
       uvloop urllib3 \
       certifi charset_normalizer idna \
+      aiohappyeyeballs aiosignal attrs frozenlist multidict propcache yarl \
+      anyio h11 httpcore click rich shellingham python-dotenv \
+      annotated-doc annotated-types pydantic-core \
+      cffi cryptography pycparser \
+      filelock fsspec pyyaml \
       dill httpx huggingface-hub multiprocess pyarrow xxhash \
       distro docstring-parser jiter sniffio astor jmespath supervisor \
       httpx-sse pydantic-settings "pyjwt[crypto]" python-multipart \
@@ -271,11 +276,18 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     && check-rocm-torch
 
 RUN python - <<'PY'
+import aiohttp
+import anyio
+import httpx
 import tokenizers
 import transformers
+from multidict import istr
 from transformers import PretrainedConfig
+from vllm.connections import global_http_connection
+print('aiohttp:', aiohttp.__version__)
 print('tokenizers:', tokenizers.__version__)
 print('transformers:', transformers.__version__)
+print('vLLM connection import: ok', type(global_http_connection).__name__)
 print('transformers PretrainedConfig import: ok')
 PY
 RUN check-rocm-torch
