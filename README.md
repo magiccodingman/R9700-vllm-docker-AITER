@@ -11,7 +11,7 @@ The image:
 - uses ROCm 7.2.4 userspace by default via `rocm/dev-ubuntu-24.04:7.2.4-complete`;
 - installs PyTorch from the ROCm 7.2 wheel index instead of using `rocm/pytorch-nightly:nightly`;
 - uses system Python inside the image, with no venv;
-- keeps Debian's apt-installed `pip` in place to avoid the `RECORD file not found` uninstall failure;
+- keeps Debian's apt-installed Python build tooling in place to avoid `RECORD file not found` uninstall failures from `pip`, `wheel`, `setuptools`, and friends;
 - builds AITER from a pinned commit;
 - builds vLLM from a pinned base commit plus the RDNA4/R9700 patch stack;
 - pulls `launch_vllm.py` from `magiccodingman/VllmLaunchScriptR9700`;

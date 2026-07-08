@@ -43,7 +43,7 @@ RUN chmod +x /usr/local/bin/apply-vllm-stack /usr/local/bin/r9700-entrypoint /us
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git git-lfs curl wget ca-certificates \
       build-essential cmake ninja-build pkg-config \
-      python3 python3-dev python3-pip python3-setuptools python3-wheel python-is-python3 \
+      python3 python3-dev python3-pip python3-setuptools python3-wheel python3-packaging python3-setuptools-scm python-is-python3 \
       rustc cargo \
       numactl libnuma-dev \
       jq less vim-tiny procps tini \
@@ -52,16 +52,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                 /cache/pip /cache/vllm /cache/torch /cache/triton /cache/huggingface /logs \
     && rm -rf /var/lib/apt/lists/*
 
-# System Python only. No venv. Keep Debian's apt-installed pip in place;
-# upgrading pip here can fail because the Debian package has no wheel RECORD.
-RUN python -m pip install --break-system-packages -U \
-      setuptools wheel ninja cmake packaging setuptools_scm \
-    && python -m pip install --break-system-packages --index-url "${PYTORCH_INDEX_URL}" ${PYTORCH_PACKAGES} \
-    && python -m pip install --break-system-packages --force-reinstall --no-cache-dir \
+# System Python only. No venv. Do not upgrade apt-owned Python build tools
+# such as pip/setuptools/wheel/packaging with pip; Debian packages often lack
+# wheel RECORD metadata, so pip cannot uninstall them cleanly.
+RUN python -m pip install --break-system-packages --index-url "${PYTORCH_INDEX_URL}" ${PYTORCH_PACKAGES} \
+    && python -m pip install --break-system-packages --force-reinstall --ignore-installed --no-cache-dir \
       --extra-index-url https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/ \
       "triton==3.7.0" \
       "triton-kernels==1.0.0" \
-    && python -m pip install --break-system-packages --force-reinstall --no-cache-dir "numpy==2.1.3" \
+    && python -m pip install --break-system-packages --ignore-installed --no-cache-dir "numpy==2.1.3" \
     && python - <<'PY'
 import torch
 print('torch:', torch.__version__)
