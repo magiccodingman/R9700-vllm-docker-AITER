@@ -91,6 +91,14 @@ print('torch file:', torch.__file__)
 print('HIP:', torch.version.hip)
 PY
 
+# vLLM is installed with --no-build-isolation so the build backend dependencies
+# must already exist in the system Python environment.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      "setuptools-rust"
+
 # Build/install AITER from the exact commit used in the manual process.
 # AITER's setup.py may shell out to `python -m pip install flydsl==...`.
 # PIP_BREAK_SYSTEM_PACKAGES=1 above lets those internal pip subprocesses work
