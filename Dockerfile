@@ -52,9 +52,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                 /cache/pip /cache/vllm /cache/torch /cache/triton /cache/huggingface /logs \
     && rm -rf /var/lib/apt/lists/*
 
-# System Python only. No venv. The --break-system-packages flag is intentional for a sealed Docker image.
+# System Python only. No venv. Keep Debian's apt-installed pip in place;
+# upgrading pip here can fail because the Debian package has no wheel RECORD.
 RUN python -m pip install --break-system-packages -U \
-      pip setuptools wheel ninja cmake packaging setuptools_scm \
+      setuptools wheel ninja cmake packaging setuptools_scm \
     && python -m pip install --break-system-packages --index-url "${PYTORCH_INDEX_URL}" ${PYTORCH_PACKAGES} \
     && python -m pip install --break-system-packages --force-reinstall --no-cache-dir \
       --extra-index-url https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/ \
