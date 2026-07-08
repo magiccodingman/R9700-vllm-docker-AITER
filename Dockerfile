@@ -260,6 +260,7 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       annotated-doc annotated-types pydantic-core \
       cffi cryptography pycparser \
       filelock fsspec pyyaml \
+      jsonschema-specifications referencing rpds-py \
       dill httpx huggingface-hub multiprocess pyarrow xxhash \
       distro docstring-parser jiter sniffio astor jmespath supervisor \
       httpx-sse pydantic-settings "pyjwt[crypto]" python-multipart \
@@ -279,16 +280,21 @@ RUN python - <<'PY'
 import aiohttp
 import anyio
 import httpx
+import jsonschema
+import referencing
 import tokenizers
 import transformers
+from jsonschema import Draft7Validator
 from multidict import istr
-from transformers import PretrainedConfig
+from transformers import MistralCommonBackend, PretrainedConfig
 from vllm.connections import global_http_connection
 print('aiohttp:', aiohttp.__version__)
+print('jsonschema:', jsonschema.__version__)
 print('tokenizers:', tokenizers.__version__)
 print('transformers:', transformers.__version__)
 print('vLLM connection import: ok', type(global_http_connection).__name__)
-print('transformers PretrainedConfig import: ok')
+print('transformers MistralCommonBackend import: ok', MistralCommonBackend)
+print('transformers PretrainedConfig import: ok', PretrainedConfig)
 PY
 RUN check-rocm-torch
 
