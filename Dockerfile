@@ -100,6 +100,10 @@ PY
 # It can treat binary console scripts from wheel eggs as UTF-8 metadata and
 # explode on packages such as ninja. Preinstall the deps with pip, then run
 # develop with --no-deps.
+#
+# Do not `import aiter` during docker build. Importing AITER can trigger JIT/GPU
+# arch detection through rocminfo, and docker build does not have the runtime
+# /dev/kfd and /dev/dri device wiring from Compose.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     cd /opt/r9700-vllm/src \
     && rm -rf aiter \
@@ -126,8 +130,12 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
     && python3 setup.py develop --no-deps 2>&1 | tee /opt/r9700-vllm/build-info/aiter-build.log \
     && python - <<'PY'
-import aiter
-print('AITER loaded from:', aiter.__file__)
+import importlib.metadata as md
+import importlib.util
+print('AITER distribution:', md.version('amd-aiter'))
+spec = importlib.util.find_spec('aiter')
+assert spec is not None, 'aiter module spec not found'
+print('AITER module spec:', spec.origin)
 PY
 
 # Clone vLLM, apply the pinned RDNA4/R9700 patch stack, then build/install it for ROCm.
