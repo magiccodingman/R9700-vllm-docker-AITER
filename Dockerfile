@@ -173,13 +173,13 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
 
 # After the wheel is installed, read vLLM's own package metadata, filter only
 # CUDA/NVIDIA-sensitive package names, and install the remaining runtime
-# dependencies under a constraints file that pins the ROCm torch/triton stack.
+# dependencies under a constraints file that pins the ROCm torch/triton/numpy stack.
 RUN python - <<'PY'
 import importlib.metadata as md
 from pathlib import Path
 
 pins = []
-for name in ('torch', 'torchvision', 'torchaudio', 'triton', 'triton-kernels'):
+for name in ('torch', 'torchvision', 'torchaudio', 'triton', 'triton-kernels', 'numpy'):
     try:
         pins.append(f'{name}=={md.version(name)}')
     except md.PackageNotFoundError:
@@ -223,7 +223,7 @@ for req in requirements:
 PY
 
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
-    python -m pip install --break-system-packages --ignore-installed \
+    python -m pip install --break-system-packages --ignore-installed --no-deps \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
       --extra-index-url "${PYTORCH_INDEX_URL}" \
