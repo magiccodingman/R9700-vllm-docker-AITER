@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Optional POSIX shim. The real cross-platform helper is r9700-vllm.py.
+exec python3 "$(dirname "$0")/r9700-vllm.py" "$@"
