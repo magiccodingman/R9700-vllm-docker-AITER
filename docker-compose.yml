@@ -11,6 +11,7 @@ services:
         LAUNCHER_REPO: ${LAUNCHER_REPO:-https://github.com/magiccodingman/VllmLaunchScriptR9700.git}
         LAUNCHER_REF: ${LAUNCHER_REF:-main}
         MAX_JOBS: ${MAX_JOBS:-8}
+        PYTORCH_ROCM_ARCH: ${PYTORCH_ROCM_ARCH:-gfx1201}
         PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-7200}
         PIP_RETRIES: ${PIP_RETRIES:-100}
     container_name: ${CONTAINER_NAME:-r9700-vllm}
