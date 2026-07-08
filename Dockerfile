@@ -32,6 +32,7 @@ ENV ROCM_PATH=/opt/rocm \
     PIP_CACHE_DIR=/cache/pip \
     PIP_DEFAULT_TIMEOUT=${PIP_DEFAULT_TIMEOUT} \
     PIP_RETRIES=${PIP_RETRIES} \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_PROGRESS_BAR=off \
     PYTHONUNBUFFERED=1 \
@@ -91,6 +92,9 @@ print('HIP:', torch.version.hip)
 PY
 
 # Build/install AITER from the exact commit used in the manual process.
+# AITER's setup.py may shell out to `python -m pip install flydsl==...`.
+# PIP_BREAK_SYSTEM_PACKAGES=1 above lets those internal pip subprocesses work
+# in this sealed Docker image without patching upstream setup.py.
 RUN cd /opt/r9700-vllm/src \
     && rm -rf aiter \
     && git clone --recursive "${AITER_REPO}" aiter \
