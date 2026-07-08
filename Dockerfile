@@ -150,10 +150,7 @@ PY
 
 # Clone vLLM, apply the pinned RDNA4/R9700 patch stack, then build/install it for ROCm.
 # Build vLLM itself with --no-deps so pip does not replace ROCm torch/triton
-# with PyPI CUDA/NVIDIA wheels. After the wheel is installed, read vLLM's own
-# package metadata, filter only CUDA/NVIDIA-sensitive package names, and install
-# the remaining runtime dependencies under a constraints file that pins the ROCm
-# torch/triton stack already present in the image.
+# with PyPI CUDA/NVIDIA wheels.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     cd /opt/r9700-vllm/src \
     && rm -rf vllm \
@@ -172,8 +169,12 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
     && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" PYTORCH_ROCM_ARCH="${PYTORCH_ROCM_ARCH}" \
-    && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
-    && python - <<'PY'
+    && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log
+
+# After the wheel is installed, read vLLM's own package metadata, filter only
+# CUDA/NVIDIA-sensitive package names, and install the remaining runtime
+# dependencies under a constraints file that pins the ROCm torch/triton stack.
+RUN python - <<'PY'
 import importlib.metadata as md
 from pathlib import Path
 
@@ -187,7 +188,8 @@ Path('/tmp/rocm-python-constraints.txt').write_text('\n'.join(pins) + '\n')
 print('ROCm Python constraints:')
 print('\n'.join(pins))
 PY
-    && python - <<'PY'
+
+RUN python - <<'PY'
 import importlib.metadata as md
 from packaging.requirements import Requirement
 from pathlib import Path
@@ -219,13 +221,16 @@ print('vLLM runtime dependency count:', len(requirements))
 for req in requirements:
     print(req)
 PY
-    && python -m pip install --break-system-packages \
+
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
       --extra-index-url "${PYTORCH_INDEX_URL}" \
       --constraint /tmp/rocm-python-constraints.txt \
-      -r /tmp/vllm-runtime-requirements.txt \
-    && python - <<'PY'
+      -r /tmp/vllm-runtime-requirements.txt
+
+RUN python - <<'PY'
 import vllm
 print('vLLM loaded from:', vllm.__file__)
 PY
