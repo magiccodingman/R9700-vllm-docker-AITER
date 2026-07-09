@@ -1,11 +1,14 @@
 # syntax=docker/dockerfile:1.7
 
-ARG ROCM_BASE_IMAGE=rocm/dev-ubuntu-26.04:7.13.0-preview-complete
+ARG ROCM_BASE_IMAGE=ubuntu:26.04
 FROM ${ROCM_BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG ROCM_APT_VERSION=7.13.0
+ARG ROCM_APT_CODENAME=resolute
+ARG ROCM_APT_PACKAGES="rocm-dev rocm-libs rocminfo rocm-smi-lib rccl"
 ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/nightly/rocm7.13
 ARG PYTORCH_PACKAGES="--pre torch torchvision torchaudio"
 ARG AMD_TRITON_INDEX_URL=https://pypi.amd.com/triton/release_/rocm-7.13.0/simple/
@@ -51,8 +54,17 @@ COPY docker/verify-rocm.py /usr/local/bin/verify-rocm.py
 
 RUN chmod +x /usr/local/bin/apply-vllm-stack /usr/local/bin/r9700-entrypoint /usr/local/bin/verify-rocm.py
 
+# Build from the official Ubuntu 26 base, then hydrate ROCm from AMD's apt repo.
+# Keep the ROCm apt version/codename/packages configurable because AMD preview
+# repos can move faster than their prebuilt Docker image tags.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      git git-lfs curl wget ca-certificates \
+      ca-certificates curl gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor -o /etc/apt/keyrings/rocm.gpg \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/${ROCM_APT_VERSION} ${ROCM_APT_CODENAME} main" > /etc/apt/sources.list.d/rocm.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+      ${ROCM_APT_PACKAGES} \
+      git git-lfs wget \
       build-essential cmake ninja-build pkg-config \
       python3 python3-dev python3-pip python3-setuptools python3-wheel python3-packaging python3-setuptools-scm python-is-python3 \
       rustc cargo \
