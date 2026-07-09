@@ -1,18 +1,18 @@
 services:
   r9700-vllm:
-    image: ${IMAGE_NAME:-r9700-vllm:rocm713-preview}
+    image: ${IMAGE_NAME:-r9700-vllm:ubuntu2604-rocm724}
     build:
       context: .
       dockerfile: Dockerfile
       args:
         ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-ubuntu:26.04}
-        ROCM_APT_VERSION: ${ROCM_APT_VERSION:-7.13.0}
-        ROCM_APT_CODENAME: ${ROCM_APT_CODENAME:-resolute}
+        ROCM_APT_VERSION: ${ROCM_APT_VERSION:-7.2.4}
+        ROCM_APT_CODENAME: ${ROCM_APT_CODENAME:-noble}
         ROCM_APT_PACKAGES: ${ROCM_APT_PACKAGES:-rocm-dev rocm-libs rocminfo rocm-smi-lib rccl}
-        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/nightly/rocm7.13}
-        PYTORCH_PACKAGES: ${PYTORCH_PACKAGES:---pre torch torchvision torchaudio}
-        AMD_TRITON_INDEX_URL: ${AMD_TRITON_INDEX_URL:-https://pypi.amd.com/triton/release_/rocm-7.13.0/simple/}
-        TRITON_PACKAGES: ${TRITON_PACKAGES:-triton triton-kernels}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/rocm7.2}
+        PYTORCH_PACKAGES: ${PYTORCH_PACKAGES:-torch torchvision torchaudio}
+        AMD_TRITON_INDEX_URL: ${AMD_TRITON_INDEX_URL:-https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/}
+        TRITON_PACKAGES: ${TRITON_PACKAGES:-triton==3.7.0 triton-kernels==1.0.0}
         VLLM_FINAL_BRANCH: ${VLLM_FINAL_BRANCH:-r9700-c3284-secondary}
         LAUNCHER_REPO: ${LAUNCHER_REPO:-https://github.com/magiccodingman/VllmLaunchScriptR9700.git}
         LAUNCHER_REF: ${LAUNCHER_REF:-main}
