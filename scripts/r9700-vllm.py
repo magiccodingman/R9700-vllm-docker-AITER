@@ -11,11 +11,31 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 DEFAULT_CONTAINER = "r9700-vllm"
 DEFAULT_SERVICE = "r9700-vllm"
-DEFAULT_IMAGE = "r9700-vllm:rocm724"
+DEFAULT_IMAGE = "r9700-vllm:rocm713-preview"
 DEFAULT_COMPOSE_FILE = "docker-compose.yml"
+
+ROCM_STACK_PRESETS = {
+    "preview": {
+        "IMAGE_NAME": "r9700-vllm:rocm713-preview",
+        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-24.04:7.13.0-preview-complete",
+        "PYTORCH_INDEX_URL": "https://download.pytorch.org/whl/nightly/rocm7.13",
+        "PYTORCH_PACKAGES": "--pre torch torchvision torchaudio",
+        "AMD_TRITON_INDEX_URL": "https://pypi.amd.com/triton/release_/rocm-7.13.0/simple/",
+        "TRITON_PACKAGES": "triton triton-kernels",
+    },
+    "stable": {
+        "IMAGE_NAME": "r9700-vllm:rocm724",
+        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-24.04:7.2.4-complete",
+        "PYTORCH_INDEX_URL": "https://download.pytorch.org/whl/rocm7.2",
+        "PYTORCH_PACKAGES": "torch torchvision torchaudio",
+        "AMD_TRITON_INDEX_URL": "https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/",
+        "TRITON_PACKAGES": "triton==3.7.0 triton-kernels==1.0.0",
+    },
+}
 
 
 def env(name: str, default: str) -> str:
@@ -25,6 +45,41 @@ def env(name: str, default: str) -> str:
 def die(message: str, code: int = 2) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(code)
+
+
+def load_dotenv_defaults(path: str = ".env") -> None:
+    """Load simple KEY=VALUE lines for helper decisions without replacing shell env."""
+    env_path = Path(path)
+    if not env_path.is_file():
+        return
+
+    for raw_line in env_path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+def apply_rocm_stack_preset() -> None:
+    """Expand ROCM_STACK into concrete Compose/Docker build variables."""
+    stack = env("R9700_ROCM_STACK", env("ROCM_STACK", "")).strip().lower()
+    if not stack or stack == "custom":
+        return
+    if stack not in ROCM_STACK_PRESETS:
+        allowed = ", ".join([*ROCM_STACK_PRESETS.keys(), "custom"])
+        die(f"Unknown ROCM_STACK={stack!r}. Allowed values: {allowed}.")
+
+    os.environ.setdefault("ROCM_STACK", stack)
+    for key, value in ROCM_STACK_PRESETS[stack].items():
+        os.environ.setdefault(key, value)
 
 
 def find_compose_cmd() -> list[str]:
@@ -106,10 +161,12 @@ Commands:
   status               Show docker compose service status
 
 Environment:
+  ROCM_STACK           Stack preset: preview, stable, or custom. Default comes from .env/Compose defaults.
+  R9700_ROCM_STACK     Also accepted; overrides ROCM_STACK when exported.
   R9700_CONTAINER      Container name override, default r9700-vllm
   CONTAINER_NAME       Also accepted for compose/.env compatibility
   R9700_SERVICE        Compose service override, default r9700-vllm
-  R9700_IMAGE          Image tag override, default r9700-vllm:rocm724
+  R9700_IMAGE          Image tag override, default r9700-vllm:rocm713-preview
   IMAGE_NAME           Also accepted for compose/.env compatibility
   R9700_COMPOSE_FILE   Compose file override, default docker-compose.yml
   COMPOSE_FILE         Also accepted
@@ -117,6 +174,8 @@ Environment:
 
 Examples:
   python scripts/r9700-vllm.py build
+  ROCM_STACK=stable python scripts/r9700-vllm.py build
+  ROCM_STACK=preview python scripts/r9700-vllm.py build
   python scripts/r9700-vllm.py serve --model /models/MyModel --tensor-parallel-size 2
   python scripts/r9700-vllm.py serve /models/MyModel --tensor-parallel-size 2
   python scripts/r9700-vllm.py logs
@@ -127,6 +186,9 @@ Examples:
 
 
 def main(argv: list[str]) -> int:
+    load_dotenv_defaults()
+    apply_rocm_stack_preset()
+
     cmd = argv[1] if len(argv) > 1 else "help"
     rest = argv[2:]
 
