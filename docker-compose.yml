@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.13.0-preview-complete}
+        ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-rocm/dev-ubuntu-26.04:7.13.0-preview-complete}
         PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/nightly/rocm7.13}
         PYTORCH_PACKAGES: ${PYTORCH_PACKAGES:---pre torch torchvision torchaudio}
         AMD_TRITON_INDEX_URL: ${AMD_TRITON_INDEX_URL:-https://pypi.amd.com/triton/release_/rocm-7.13.0/simple/}
