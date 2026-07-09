@@ -77,9 +77,9 @@ def apply_rocm_stack_preset() -> None:
         allowed = ", ".join([*ROCM_STACK_PRESETS.keys(), "custom"])
         die(f"Unknown ROCM_STACK={stack!r}. Allowed values: {allowed}.")
 
-    os.environ.setdefault("ROCM_STACK", stack)
+    os.environ["ROCM_STACK"] = stack
     for key, value in ROCM_STACK_PRESETS[stack].items():
-        os.environ.setdefault(key, value)
+        os.environ[key] = value
 
 
 def find_compose_cmd() -> list[str]:
