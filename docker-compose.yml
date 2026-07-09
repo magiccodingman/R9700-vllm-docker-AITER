@@ -1,12 +1,15 @@
 services:
   r9700-vllm:
-    image: ${IMAGE_NAME:-r9700-vllm:rocm724}
+    image: ${IMAGE_NAME:-r9700-vllm:rocm713-preview}
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.2.4-complete}
-        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/rocm7.2}
+        ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.13.0-preview-complete}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/nightly/rocm7.13}
+        PYTORCH_PACKAGES: ${PYTORCH_PACKAGES:---pre torch torchvision torchaudio}
+        AMD_TRITON_INDEX_URL: ${AMD_TRITON_INDEX_URL:-https://pypi.amd.com/triton/release_/rocm-7.13.0/simple/}
+        TRITON_PACKAGES: ${TRITON_PACKAGES:-triton triton-kernels}
         VLLM_FINAL_BRANCH: ${VLLM_FINAL_BRANCH:-r9700-c3284-secondary}
         LAUNCHER_REPO: ${LAUNCHER_REPO:-https://github.com/magiccodingman/VllmLaunchScriptR9700.git}
         LAUNCHER_REF: ${LAUNCHER_REF:-main}
