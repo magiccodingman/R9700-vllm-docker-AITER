@@ -15,27 +15,21 @@ from pathlib import Path
 
 DEFAULT_CONTAINER = "r9700-vllm"
 DEFAULT_SERVICE = "r9700-vllm"
-DEFAULT_IMAGE = "r9700-vllm:ubuntu2604-rocm724"
+DEFAULT_IMAGE = "r9700-vllm:rocm724"
 DEFAULT_COMPOSE_FILE = "docker-compose.yml"
 
 ROCM_STACK_PRESETS = {
     "preview": {
-        "IMAGE_NAME": "r9700-vllm:ubuntu2604-rocm724",
-        "ROCM_BASE_IMAGE": "ubuntu:26.04",
-        "ROCM_APT_VERSION": "7.2.4",
-        "ROCM_APT_CODENAME": "noble",
-        "ROCM_APT_PACKAGES": "rocm-dev rocm-libs rocminfo rocm-smi-lib rccl",
+        "IMAGE_NAME": "r9700-vllm:rocm724",
+        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-24.04:7.2.4-complete",
         "PYTORCH_INDEX_URL": "https://download.pytorch.org/whl/rocm7.2",
         "PYTORCH_PACKAGES": "torch torchvision torchaudio",
         "AMD_TRITON_INDEX_URL": "https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/",
         "TRITON_PACKAGES": "triton==3.7.0 triton-kernels==1.0.0",
     },
     "stable": {
-        "IMAGE_NAME": "r9700-vllm:ubuntu2604-rocm724",
-        "ROCM_BASE_IMAGE": "ubuntu:26.04",
-        "ROCM_APT_VERSION": "7.2.4",
-        "ROCM_APT_CODENAME": "noble",
-        "ROCM_APT_PACKAGES": "rocm-dev rocm-libs rocminfo rocm-smi-lib rccl",
+        "IMAGE_NAME": "r9700-vllm:rocm724",
+        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-24.04:7.2.4-complete",
         "PYTORCH_INDEX_URL": "https://download.pytorch.org/whl/rocm7.2",
         "PYTORCH_PACKAGES": "torch torchvision torchaudio",
         "AMD_TRITON_INDEX_URL": "https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/",
@@ -172,7 +166,7 @@ Environment:
   R9700_CONTAINER      Container name override, default r9700-vllm
   CONTAINER_NAME       Also accepted for compose/.env compatibility
   R9700_SERVICE        Compose service override, default r9700-vllm
-  R9700_IMAGE          Image tag override, default r9700-vllm:ubuntu2604-rocm724
+  R9700_IMAGE          Image tag override, default r9700-vllm:rocm724
   IMAGE_NAME           Also accepted for compose/.env compatibility
   R9700_COMPOSE_FILE   Compose file override, default docker-compose.yml
   COMPOSE_FILE         Also accepted
@@ -182,7 +176,7 @@ Examples:
   python scripts/r9700-vllm.py build
   ROCM_STACK=stable python scripts/r9700-vllm.py build
   ROCM_STACK=preview python scripts/r9700-vllm.py build
-  ROCM_STACK=custom ROCM_BASE_IMAGE=ubuntu:26.04 ROCM_APT_VERSION=7.2.4 ROCM_APT_CODENAME=noble python scripts/r9700-vllm.py build
+  ROCM_STACK=custom ROCM_BASE_IMAGE=rocm/dev-ubuntu-24.04:7.2.4-complete python scripts/r9700-vllm.py build
   python scripts/r9700-vllm.py serve --model /models/MyModel --tensor-parallel-size 2
   python scripts/r9700-vllm.py serve /models/MyModel --tensor-parallel-size 2
   python scripts/r9700-vllm.py logs
