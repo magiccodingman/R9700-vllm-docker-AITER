@@ -21,7 +21,7 @@ DEFAULT_COMPOSE_FILE = "docker-compose.yml"
 ROCM_STACK_PRESETS = {
     "preview": {
         "IMAGE_NAME": "r9700-vllm:rocm713-preview",
-        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-24.04:7.13.0-preview-complete",
+        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-26.04:7.13.0-preview-complete",
         "PYTORCH_INDEX_URL": "https://download.pytorch.org/whl/nightly/rocm7.13",
         "PYTORCH_PACKAGES": "--pre torch torchvision torchaudio",
         "AMD_TRITON_INDEX_URL": "https://pypi.amd.com/triton/release_/rocm-7.13.0/simple/",
@@ -29,7 +29,7 @@ ROCM_STACK_PRESETS = {
     },
     "stable": {
         "IMAGE_NAME": "r9700-vllm:rocm724",
-        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-24.04:7.2.4-complete",
+        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-26.04:7.2.4-complete",
         "PYTORCH_INDEX_URL": "https://download.pytorch.org/whl/rocm7.2",
         "PYTORCH_PACKAGES": "torch torchvision torchaudio",
         "AMD_TRITON_INDEX_URL": "https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/",
@@ -176,6 +176,7 @@ Examples:
   python scripts/r9700-vllm.py build
   ROCM_STACK=stable python scripts/r9700-vllm.py build
   ROCM_STACK=preview python scripts/r9700-vllm.py build
+  ROCM_STACK=custom ROCM_BASE_IMAGE=rocm/dev-ubuntu-26.04:7.13.0-preview-complete python scripts/r9700-vllm.py build
   python scripts/r9700-vllm.py serve --model /models/MyModel --tensor-parallel-size 2
   python scripts/r9700-vllm.py serve /models/MyModel --tensor-parallel-size 2
   python scripts/r9700-vllm.py logs
