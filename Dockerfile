@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG ROCM_BASE_IMAGE=rocm/dev-ubuntu-24.04:7.13.0-preview-complete
+ARG ROCM_BASE_IMAGE=rocm/dev-ubuntu-26.04:7.13.0-preview-complete
 FROM ${ROCM_BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
