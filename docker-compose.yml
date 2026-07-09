@@ -1,14 +1,11 @@
 services:
   r9700-vllm:
-    image: ${IMAGE_NAME:-r9700-vllm:ubuntu2604-rocm724}
+    image: ${IMAGE_NAME:-r9700-vllm:rocm724}
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-ubuntu:26.04}
-        ROCM_APT_VERSION: ${ROCM_APT_VERSION:-7.2.4}
-        ROCM_APT_CODENAME: ${ROCM_APT_CODENAME:-noble}
-        ROCM_APT_PACKAGES: ${ROCM_APT_PACKAGES:-rocm-dev rocm-libs rocminfo rocm-smi-lib rccl}
+        ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.2.4-complete}
         PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/rocm7.2}
         PYTORCH_PACKAGES: ${PYTORCH_PACKAGES:-torch torchvision torchaudio}
         AMD_TRITON_INDEX_URL: ${AMD_TRITON_INDEX_URL:-https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/}
