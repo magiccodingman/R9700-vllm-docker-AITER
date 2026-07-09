@@ -1,13 +1,15 @@
 # syntax=docker/dockerfile:1.7
 
-ARG ROCM_BASE_IMAGE=rocm/dev-ubuntu-24.04:7.2.4-complete
+ARG ROCM_BASE_IMAGE=rocm/dev-ubuntu-24.04:7.13.0-preview-complete
 FROM ${ROCM_BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/rocm7.2
-ARG PYTORCH_PACKAGES="torch torchvision torchaudio"
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/nightly/rocm7.13
+ARG PYTORCH_PACKAGES="--pre torch torchvision torchaudio"
+ARG AMD_TRITON_INDEX_URL=https://pypi.amd.com/triton/release_/rocm-7.13.0/simple/
+ARG TRITON_PACKAGES="triton triton-kernels"
 ARG AITER_REPO=https://github.com/ROCm/aiter.git
 ARG AITER_COMMIT=55d6e42f9b809f0c40b23562525fe7354622b085
 ARG VLLM_REPO=https://github.com/vllm-project/vllm.git
@@ -95,9 +97,8 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     python -m pip install --break-system-packages --force-reinstall --ignore-installed \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
-      --extra-index-url https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/ \
-      "triton==3.7.0" \
-      "triton-kernels==1.0.0" \
+      --extra-index-url "${AMD_TRITON_INDEX_URL}" \
+      ${TRITON_PACKAGES} \
     && python -m pip install --break-system-packages --ignore-installed \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
