@@ -5,7 +5,10 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-rocm/dev-ubuntu-26.04:7.13.0-preview-complete}
+        ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-ubuntu:26.04}
+        ROCM_APT_VERSION: ${ROCM_APT_VERSION:-7.13.0}
+        ROCM_APT_CODENAME: ${ROCM_APT_CODENAME:-resolute}
+        ROCM_APT_PACKAGES: ${ROCM_APT_PACKAGES:-rocm-dev rocm-libs rocminfo rocm-smi-lib rccl}
         PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/nightly/rocm7.13}
         PYTORCH_PACKAGES: ${PYTORCH_PACKAGES:---pre torch torchvision torchaudio}
         AMD_TRITON_INDEX_URL: ${AMD_TRITON_INDEX_URL:-https://pypi.amd.com/triton/release_/rocm-7.13.0/simple/}
