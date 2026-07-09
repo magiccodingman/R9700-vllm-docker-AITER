@@ -61,6 +61,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                 /cache/pip /cache/vllm /cache/torch /cache/triton /cache/huggingface /logs \
     && rm -rf /var/lib/apt/lists/*
 
+RUN cat > /usr/local/bin/check-rocm-torch <<'PY'
+#!/usr/bin/env python3
+import torch
+
+hip = getattr(torch.version, "hip", None)
+cuda = getattr(torch.version, "cuda", None)
+print("torch:", torch.__version__)
+print("hip:", hip)
+print("cuda:", cuda)
+print("torch file:", torch.__file__)
+assert hip is not None, "BROKEN: torch is not ROCm/HIP-enabled"
+assert cuda is None, "BROKEN: CUDA torch replaced the ROCm torch stack"
+PY
+RUN chmod +x /usr/local/bin/check-rocm-torch
+
 # System Python only. No venv. Do not upgrade apt-owned Python build tools
 # such as pip/setuptools/wheel/packaging with pip; Debian packages often lack
 # wheel RECORD metadata, so pip cannot uninstall them cleanly.
@@ -73,7 +88,8 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       --index-url "${PYTORCH_INDEX_URL}" \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
-      ${PYTORCH_PACKAGES}
+      ${PYTORCH_PACKAGES} \
+    && check-rocm-torch
 
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     python -m pip install --break-system-packages --force-reinstall --ignore-installed \
@@ -86,12 +102,7 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
       "numpy==2.1.3" \
-    && python - <<'PY'
-import torch
-print('torch:', torch.__version__)
-print('torch file:', torch.__file__)
-print('HIP:', torch.version.hip)
-PY
+    && check-rocm-torch
 
 # vLLM is installed with --no-build-isolation so the build backend dependencies
 # must already exist in the system Python environment.
@@ -99,7 +110,8 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     python -m pip install --break-system-packages \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
-      "setuptools-rust"
+      "setuptools-rust" \
+    && check-rocm-torch
 
 # Build/install AITER from the exact commit used in the manual process.
 # AITER's setup.py may shell out to `python -m pip install flydsl==...`.
@@ -147,6 +159,7 @@ spec = importlib.util.find_spec('aiter')
 assert spec is not None, 'aiter module spec not found'
 print('AITER module spec:', spec.origin)
 PY
+RUN check-rocm-torch
 
 # Clone vLLM, apply the pinned RDNA4/R9700 patch stack, then build/install it for ROCm.
 # Build vLLM itself with --no-deps so pip does not replace ROCm torch/triton
@@ -169,7 +182,8 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
     && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" PYTORCH_ROCM_ARCH="${PYTORCH_ROCM_ARCH}" \
-    && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log
+    && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
+    && check-rocm-torch
 
 # After the wheel is installed, read vLLM's own package metadata, filter only
 # CUDA/NVIDIA-sensitive package names, and install the remaining runtime
@@ -178,7 +192,7 @@ RUN python - <<'PY'
 import importlib.metadata as md
 from pathlib import Path
 
-pins = []
+pins = ['tokenizers==0.22.2']
 for name in ('torch', 'torchvision', 'torchaudio', 'triton', 'triton-kernels', 'numpy'):
     try:
         pins.append(f'{name}=={md.version(name)}')
@@ -228,12 +242,71 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       --retries "${PIP_RETRIES}" \
       --extra-index-url "${PYTORCH_INDEX_URL}" \
       --constraint /tmp/rocm-python-constraints.txt \
-      -r /tmp/vllm-runtime-requirements.txt
+      -r /tmp/vllm-runtime-requirements.txt \
+    && check-rocm-torch
+
+# The direct vLLM install above intentionally uses --no-deps to protect the
+# ROCm torch/triton stack. Hydrate known non-GPU transitive runtime deps
+# explicitly, without -U, and keep the ROCm guard active immediately after.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages --ignore-installed \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      --constraint /tmp/rocm-python-constraints.txt \
+      uvloop urllib3 \
+      certifi charset_normalizer idna \
+      aiohappyeyeballs aiosignal attrs frozenlist multidict propcache yarl \
+      anyio h11 httpcore click rich shellingham python-dotenv \
+      annotated-doc annotated-types pydantic-core pydantic-extra-types pycountry \
+      cffi cryptography pycparser \
+      filelock fsspec pyyaml \
+      jsonschema-specifications referencing rpds-py \
+      dill httpx huggingface-hub multiprocess pyarrow xxhash \
+      distro docstring-parser jiter sniffio astor jmespath supervisor \
+      httpx-sse pydantic-settings "pyjwt[crypto]" python-multipart \
+      sse-starlette typing-inspection uvicorn typer \
+    && check-rocm-torch
+
+# peft may need accelerate at runtime, but installing accelerate normally after
+# ROCm torch is present can make pip try to replace torch. Install it isolated.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages --ignore-installed --no-deps \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      accelerate \
+    && check-rocm-torch
+
+RUN python - <<'PY'
+import aiohttp
+import anyio
+import httpx
+import jsonschema
+import pycountry
+import referencing
+import tokenizers
+import transformers
+from jsonschema import Draft7Validator
+from multidict import istr
+from pydantic_extra_types.language_code import LanguageAlpha2
+from transformers import MistralCommonBackend, PretrainedConfig
+from vllm.connections import global_http_connection
+print('aiohttp:', aiohttp.__version__)
+print('jsonschema:', jsonschema.__version__)
+print('pycountry import: ok', pycountry.__version__)
+print('tokenizers:', tokenizers.__version__)
+print('transformers:', transformers.__version__)
+print('pydantic extra LanguageAlpha2 import: ok', LanguageAlpha2)
+print('vLLM connection import: ok', type(global_http_connection).__name__)
+print('transformers MistralCommonBackend import: ok', MistralCommonBackend)
+print('transformers PretrainedConfig import: ok', PretrainedConfig)
+PY
+RUN check-rocm-torch
 
 RUN python - <<'PY'
 import vllm
 print('vLLM loaded from:', vllm.__file__)
 PY
+RUN check-rocm-torch
 
 # Pull the launch wrapper, but keep it runtime-overridable with VLLM_LAUNCH_SCRIPT.
 RUN cd /opt/r9700-vllm \
