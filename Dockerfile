@@ -13,7 +13,7 @@ ARG TRITON_PACKAGES="triton==3.7.0 triton-kernels==1.0.0"
 ARG AITER_REPO=https://github.com/ROCm/aiter.git
 ARG AITER_COMMIT=55d6e42f9b809f0c40b23562525fe7354622b085
 ARG VLLM_REPO=https://github.com/vllm-project/vllm.git
-ARG VLLM_BASE_COMMIT=c3284c31f52c005bde02cf7899959c2539b01d2f
+ARG VLLM_BASE_COMMIT=735def4fcf39945b6e6c24769878760e3e113b15
 ARG VLLM_FINAL_BRANCH=r9700-c3284-secondary
 ARG LAUNCHER_REPO=https://github.com/magiccodingman/VllmLaunchScriptR9700.git
 ARG LAUNCHER_REF=main
