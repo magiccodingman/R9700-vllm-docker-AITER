@@ -7,6 +7,9 @@ services:
       args:
         ROCM_BASE_IMAGE: ${ROCM_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.2.4-complete}
         PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-https://download.pytorch.org/whl/rocm7.2}
+        PYTORCH_PACKAGES: ${PYTORCH_PACKAGES:-torch torchvision torchaudio}
+        AMD_TRITON_INDEX_URL: ${AMD_TRITON_INDEX_URL:-https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/}
+        TRITON_PACKAGES: ${TRITON_PACKAGES:-triton==3.7.0 triton-kernels==1.0.0}
         VLLM_FINAL_BRANCH: ${VLLM_FINAL_BRANCH:-r9700-c3284-secondary}
         LAUNCHER_REPO: ${LAUNCHER_REPO:-https://github.com/magiccodingman/VllmLaunchScriptR9700.git}
         LAUNCHER_REF: ${LAUNCHER_REF:-main}
