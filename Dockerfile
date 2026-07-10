@@ -114,6 +114,8 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       "setuptools-rust" \
     && check-rocm-torch
 
+RUN python -m pip install --no-cache-dir loguru
+
 # Build/install AITER from the exact commit used in the manual process.
 # AITER's setup.py may shell out to `python -m pip install flydsl==...`.
 # PIP_BREAK_SYSTEM_PACKAGES=1 above lets those internal pip subprocesses work
