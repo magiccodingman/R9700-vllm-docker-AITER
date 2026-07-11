@@ -6,6 +6,10 @@ export HIP_PATH="${HIP_PATH:-$ROCM_PATH}"
 export PATH="$ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH"
 export LD_LIBRARY_PATH="$ROCM_PATH/lib:$ROCM_PATH/lib64:${LD_LIBRARY_PATH:-}"
 
+# This is a ROCm-only image. Ensure host or Docker environment inheritance does
+# not make vLLM detect a CUDA visibility configuration and emit warnings.
+unset CUDA_VISIBLE_DEVICES
+
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/cache}"
 export HF_HOME="${HF_HOME:-/cache/huggingface}"
 export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HOME/hub}"
