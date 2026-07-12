@@ -72,20 +72,30 @@ RUN wget --progress=dot:giga -O /tmp/rocm-${ROCM_VERSION}.tar.gz "${ROCM_TARBALL
 
 RUN cat > /usr/local/bin/check-rocm-torch <<'PY'
 #!/usr/bin/env python3
+import importlib.metadata as md
 import torch
 
 expected_torch = "2.11.0+rocm7.13.0"
-expected_hip = "7.13.0"
+expected_rocm = "7.13.0"
+expected_hip_release = "7.13"
+rocm = md.version("rocm")
 hip = getattr(torch.version, "hip", None)
+hip_release = ".".join(hip.split(".")[:2]) if hip else None
 cuda = getattr(torch.version, "cuda", None)
 print("torch:", torch.__version__)
+print("rocm package:", rocm)
 print("hip:", hip)
 print("cuda:", cuda)
 print("torch file:", torch.__file__)
 assert torch.__version__ == expected_torch, (
     f"BROKEN: expected torch {expected_torch}, got {torch.__version__}"
 )
-assert hip == expected_hip, f"BROKEN: expected ROCm/HIP {expected_hip}, got {hip}"
+assert rocm == expected_rocm, (
+    f"BROKEN: expected ROCm package {expected_rocm}, got {rocm}"
+)
+assert hip_release == expected_hip_release, (
+    f"BROKEN: expected HIP release {expected_hip_release}.x, got {hip}"
+)
 assert cuda is None, "BROKEN: CUDA torch replaced the ROCm torch stack"
 PY
 RUN chmod +x /usr/local/bin/check-rocm-torch
