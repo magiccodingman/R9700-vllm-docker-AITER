@@ -168,10 +168,18 @@ print('AITER module spec:', spec.origin)
 PY
 RUN check-rocm-torch
 
+# The ROCm SMI CMake package pulled in by PyTorch requires libdrm's pkg-config
+# metadata. Install the development package here, after AITER, so the expensive
+# successful AITER build remains cached while vLLM gets the system dependency it
+# needs for CMake configuration.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libdrm-dev \
+    && pkg-config --modversion libdrm \
+    && rm -rf /var/lib/apt/lists/*
+
 # PyTorch's ROCm wheels install modern setuptools. Overlay a matching packaging
 # release in /usr/local so setuptools does not fall back to Ubuntu's older
-# apt-owned packaging module during vLLM editable metadata generation. Keeping
-# this immediately before vLLM preserves the expensive cached AITER build.
+# apt-owned packaging module during vLLM editable metadata generation.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     python -m pip install --break-system-packages --ignore-installed \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
@@ -196,6 +204,7 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
     && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" PYTORCH_ROCM_ARCH="${PYTORCH_ROCM_ARCH}" \
+    && export CMAKE_ARGS="-DGPU_TARGETS=${PYTORCH_ROCM_ARCH} -DAMDGPU_TARGETS=${PYTORCH_ROCM_ARCH}" \
     && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
     && check-rocm-torch
 
