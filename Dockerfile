@@ -123,11 +123,16 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       "numpy==2.1.3" \
     && check-rocm-torch
 
+# PyTorch's ROCm wheels install modern setuptools. Overlay a matching packaging
+# release in /usr/local so setuptools does not fall back to Ubuntu's older
+# apt-owned packaging module during vLLM editable metadata generation.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
-    python -m pip install --break-system-packages \
+    python -m pip install --break-system-packages --ignore-installed \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
+      "packaging>=24.2" \
       "setuptools-rust" \
+    && python -c "import packaging, packaging.licenses; print('packaging:', packaging.__version__)" \
     && check-rocm-torch
 
 RUN python -m pip install --no-cache-dir loguru
