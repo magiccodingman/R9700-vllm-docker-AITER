@@ -50,13 +50,7 @@ EOF
     fi
 
     /usr/local/bin/verify-rocm.py --warn-only
-    launch_script="${VLLM_LAUNCH_SCRIPT:-/opt/r9700-vllm/launcher/launch_vllm.py}"
-    if [ -f "$launch_script" ]; then
-      echo "[entrypoint] launching through: $launch_script"
-      exec python "$launch_script" "$@"
-    fi
-    echo "[entrypoint] launch script not found; falling back to vLLM OpenAI API server module."
-    exec python -m vllm.entrypoints.openai.api_server "$@"
+    exec vllm serve "$@"
     ;;
   verify)
     shift || true
