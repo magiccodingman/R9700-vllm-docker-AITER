@@ -10,6 +10,7 @@ ARG ROCM_VERSION=7.13.0
 ARG ROCM_TARBALL_URL=https://repo.amd.com/rocm/tarball/therock-dist-linux-gfx120X-all-7.13.0.tar.gz
 ARG PYTORCH_INDEX_URL=https://repo.amd.com/rocm/whl/gfx120X-all/
 ARG PYTORCH_PACKAGES="torch==2.11.0+rocm7.13.0 torchvision==0.26.0+rocm7.13.0 torchaudio==2.11.0+rocm7.13.0"
+ARG TRITON_PACKAGE=triton==3.6.0+rocm7.13.0
 ARG AITER_REPO=https://github.com/ROCm/aiter.git
 ARG AITER_COMMIT=55d6e42f9b809f0c40b23562525fe7354622b085
 ARG VLLM_REPO=https://github.com/magiccodingman/vllm-rdna4.git
@@ -78,7 +79,13 @@ import torch
 expected_torch = "2.11.0+rocm7.13.0"
 expected_rocm = "7.13.0"
 expected_hip_release = "7.13"
+expected_triton = "3.6.0+rocm7.13.0"
 rocm = md.version("rocm")
+triton = md.version("triton")
+try:
+    triton_kernels = md.version("triton-kernels")
+except md.PackageNotFoundError:
+    triton_kernels = None
 hip = getattr(torch.version, "hip", None)
 hip_release = ".".join(hip.split(".")[:2]) if hip else None
 cuda = getattr(torch.version, "cuda", None)
@@ -86,6 +93,8 @@ print("torch:", torch.__version__)
 print("rocm package:", rocm)
 print("hip:", hip)
 print("cuda:", cuda)
+print("triton:", triton)
+print("triton-kernels:", triton_kernels)
 print("torch file:", torch.__file__)
 assert torch.__version__ == expected_torch, (
     f"BROKEN: expected torch {expected_torch}, got {torch.__version__}"
@@ -95,6 +104,12 @@ assert rocm == expected_rocm, (
 )
 assert hip_release == expected_hip_release, (
     f"BROKEN: expected HIP release {expected_hip_release}.x, got {hip}"
+)
+assert triton == expected_triton, (
+    f"BROKEN: expected Triton {expected_triton}, got {triton}"
+)
+assert triton_kernels is None, (
+    f"BROKEN: unexpected triton-kernels package {triton_kernels}"
 )
 assert cuda is None, "BROKEN: CUDA torch replaced the ROCm torch stack"
 PY
@@ -166,7 +181,18 @@ spec = importlib.util.find_spec('aiter')
 assert spec is not None, 'aiter module spec not found'
 print('AITER module spec:', spec.origin)
 PY
-RUN check-rocm-torch
+
+# flydsl/AITER dependency resolution can pull AMD's older ROCm 7.2 Triton pair
+# from PyPI. Remove that contamination and restore the official ROCm 7.13 Triton
+# wheel from the gfx120X index before validating or building vLLM.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip uninstall -y triton triton-kernels pytorch-triton-rocm || true \
+    && python -m pip install --break-system-packages --ignore-installed --no-deps \
+      --index-url "${PYTORCH_INDEX_URL}" \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      "${TRITON_PACKAGE}" \
+    && check-rocm-torch
 
 # The ROCm SMI CMake package pulled in by PyTorch requires libdrm's pkg-config
 # metadata. Install the development package here, after AITER, so the expensive
