@@ -52,7 +52,7 @@ rocm package == 7.13.0
 torch.version.hip is in the 7.13.x release family
 ```
 
-AMD's PyTorch wheel currently reports the HIP build as a more specific internal value such as `7.13.99004`, so the validator checks the exact ROCm package version and the HIP `7.13` release family instead of requiring the runtime build string to equal `7.13.0` literally.
+AMD's PyTorch wheel reports the HIP build as a more specific internal value such as `7.13.99004`. The validator therefore checks the exact installed ROCm package version and the HIP `7.13` release family instead of incorrectly requiring the internal HIP build string to equal `7.13.0` literally.
 
 The resolved ROCm version is also recorded inside the image at:
 
