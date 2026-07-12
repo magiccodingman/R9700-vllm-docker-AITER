@@ -1,6 +1,6 @@
 # R9700 vLLM Docker AITER
 
-Opinionated Docker build for running a custom ROCm/vLLM/AITER stack on an AMD Radeon RX 9700-class RDNA4 Linux host.
+Opinionated Docker build for running a custom ROCm/vLLM/AITER stack on an AMD Radeon AI PRO R9700 RDNA4 Linux host.
 
 This repo exists because the current RDNA4 software path is still spicy. The goal is to turn the manual container setup into something repeatable and much easier to iterate on.
 
@@ -8,15 +8,53 @@ This repo exists because the current RDNA4 software path is still spicy. The goa
 
 The image:
 
-- uses ROCm 7.2.4 userspace by default via `rocm/dev-ubuntu-24.04:7.2.4-complete`;
-- installs PyTorch from the ROCm 7.2 wheel index instead of using `rocm/pytorch-nightly:nightly`;
+- uses the **ROCm 7.13.0 Technology Preview** userspace and development stack;
+- installs AMD's official `gfx120X-all` TheRock tarball into `/opt/rocm`;
+- installs the exact ROCm 7.13 PyTorch stack: `torch 2.11.0`, `torchvision 0.26.0`, and `torchaudio 2.11.0`;
+- lets that PyTorch installation pull its matching ROCm 7.13 Triton dependency instead of replacing it from an older ROCm repository;
 - uses system Python inside the image, with no venv;
-- keeps Debian's apt-installed Python build tooling in place to avoid `RECORD file not found` uninstall failures from `pip`, `wheel`, `setuptools`, and friends;
+- keeps Ubuntu's apt-installed Python build tooling in place to avoid `RECORD file not found` uninstall failures from `pip`, `wheel`, `setuptools`, and friends;
 - builds AITER from a pinned commit;
 - clones and builds vLLM directly from `magiccodingman/vllm-rdna4`;
 - uses the `rdna4-dev` branch by default, with an optional `VLLM_REF` override;
 - launches the installed `vllm serve` command directly;
-- keeps Hugging Face, Torch, Triton, vLLM, and pip caches under `/cache`.
+- keeps Hugging Face, Torch, Triton, vLLM, and general pip caches under `/cache`.
+
+## ROCm 7.13.0 Technology Preview
+
+The default ROCm userspace comes from AMD's official RDNA4 tarball:
+
+```dotenv
+ROCM_BASE_IMAGE=ubuntu:24.04
+ROCM_VERSION=7.13.0
+ROCM_TARBALL_URL=https://repo.amd.com/rocm/tarball/therock-dist-linux-gfx120X-all-7.13.0.tar.gz
+```
+
+The PyTorch installation uses AMD's `gfx120X-all` wheel repository and exact ROCm 7.13 packages:
+
+```bash
+python -m pip install \
+  --break-system-packages \
+  --force-reinstall \
+  --no-cache-dir \
+  --index-url https://repo.amd.com/rocm/whl/gfx120X-all/ \
+  "torch==2.11.0+rocm7.13.0" \
+  "torchvision==0.26.0+rocm7.13.0" \
+  "torchaudio==2.11.0+rocm7.13.0"
+```
+
+The Docker build verifies both of these exact values before continuing:
+
+```text
+torch == 2.11.0+rocm7.13.0
+torch.version.hip == 7.13.0
+```
+
+The resolved ROCm version is also recorded inside the image at:
+
+```text
+/opt/r9700-vllm/build-info/rocm.version.txt
+```
 
 ## Host ROCm driver reality check
 
@@ -41,7 +79,7 @@ or:
 ./scripts/host-rocm-check.sh
 ```
 
-If that fails, fix the host ROCm/AMDGPU driver first. Once `/dev/kfd` and `/dev/dri` are present, the Docker image owns the ROCm 7.2.4 userspace side.
+If that fails, fix the host ROCm/AMDGPU driver first. Once `/dev/kfd` and `/dev/dri` are present, the Docker image owns the ROCm 7.13.0 Technology Preview userspace side.
 
 ## First-time setup
 
@@ -101,7 +139,7 @@ or directly:
 docker compose build
 ```
 
-The selected ref and resolved commit are recorded inside the image under:
+The selected vLLM ref and resolved commit are recorded inside the image under:
 
 ```text
 /opt/r9700-vllm/build-info/vllm.ref.txt
@@ -176,7 +214,7 @@ The helper removes the old container before starting the new one.
 
 ## Runtime flags
 
-Runtime behavior now comes from the environment and the arguments passed to `vllm serve`.
+Runtime behavior comes from the environment and the arguments passed to `vllm serve`.
 
 For example:
 
