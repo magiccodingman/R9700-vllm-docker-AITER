@@ -36,6 +36,7 @@ The PyTorch installation uses AMD's `gfx120X-all` wheel repository and exact ROC
 python -m pip install \
   --break-system-packages \
   --force-reinstall \
+  --ignore-installed \
   --no-cache-dir \
   --index-url https://repo.amd.com/rocm/whl/gfx120X-all/ \
   "torch==2.11.0+rocm7.13.0" \
@@ -43,12 +44,15 @@ python -m pip install \
   "torchaudio==2.11.0+rocm7.13.0"
 ```
 
-The Docker build verifies both of these exact values before continuing:
+The Docker build verifies all of the following before continuing:
 
 ```text
 torch == 2.11.0+rocm7.13.0
-torch.version.hip == 7.13.0
+rocm package == 7.13.0
+torch.version.hip is in the 7.13.x release family
 ```
+
+AMD's PyTorch wheel currently reports the HIP build as a more specific internal value such as `7.13.99004`, so the validator checks the exact ROCm package version and the HIP `7.13` release family instead of requiring the runtime build string to equal `7.13.0` literally.
 
 The resolved ROCm version is also recorded inside the image at:
 
