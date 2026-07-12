@@ -12,11 +12,8 @@ ARG AMD_TRITON_INDEX_URL=https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/
 ARG TRITON_PACKAGES="triton==3.7.0 triton-kernels==1.0.0"
 ARG AITER_REPO=https://github.com/ROCm/aiter.git
 ARG AITER_COMMIT=55d6e42f9b809f0c40b23562525fe7354622b085
-ARG VLLM_REPO=https://github.com/vllm-project/vllm.git
-ARG VLLM_BASE_COMMIT=735def4fcf39945b6e6c24769878760e3e113b15
-ARG VLLM_FINAL_BRANCH=r9700-c3284-secondary
-ARG LAUNCHER_REPO=https://github.com/magiccodingman/VllmLaunchScriptR9700.git
-ARG LAUNCHER_REF=main
+ARG VLLM_REPO=https://github.com/magiccodingman/vllm-rdna4.git
+ARG VLLM_REF=rdna4-dev
 ARG MAX_JOBS=8
 ARG PYTORCH_ROCM_ARCH=gfx1201
 ARG PIP_DEFAULT_TIMEOUT=7200
@@ -45,11 +42,10 @@ ENV ROCM_PATH=/opt/rocm \
 
 WORKDIR /opt/r9700-vllm
 
-COPY docker/apply-vllm-stack.sh /usr/local/bin/apply-vllm-stack
 COPY docker/r9700-entrypoint.sh /usr/local/bin/r9700-entrypoint
 COPY docker/verify-rocm.py /usr/local/bin/verify-rocm.py
 
-RUN chmod +x /usr/local/bin/apply-vllm-stack /usr/local/bin/r9700-entrypoint /usr/local/bin/verify-rocm.py
+RUN chmod +x /usr/local/bin/r9700-entrypoint /usr/local/bin/verify-rocm.py
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git git-lfs curl wget ca-certificates \
@@ -78,13 +74,6 @@ assert cuda is None, "BROKEN: CUDA torch replaced the ROCm torch stack"
 PY
 RUN chmod +x /usr/local/bin/check-rocm-torch
 
-# System Python only. No venv. Do not upgrade apt-owned Python build tools
-# such as pip/setuptools/wheel/packaging with pip; Debian packages often lack
-# wheel RECORD metadata, so pip cannot uninstall them cleanly.
-#
-# PyTorch ROCm wheels are huge, so this uses long pip timeouts/retries and a
-# BuildKit cache mount. Once the torch layer succeeds, later build failures do
-# not force another multi-GB torch download.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     python -m pip install --break-system-packages \
       --index-url "${PYTORCH_INDEX_URL}" \
@@ -105,8 +94,6 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       "numpy==2.1.3" \
     && check-rocm-torch
 
-# vLLM is installed with --no-build-isolation so the build backend dependencies
-# must already exist in the system Python environment.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     python -m pip install --break-system-packages \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
@@ -116,19 +103,7 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
 
 RUN python -m pip install --no-cache-dir loguru
 
-# Build/install AITER from the exact commit used in the manual process.
-# AITER's setup.py may shell out to `python -m pip install flydsl==...`.
-# PIP_BREAK_SYSTEM_PACKAGES=1 above lets those internal pip subprocesses work
-# in this sealed Docker image without patching upstream setup.py.
-#
-# Do not let `setup.py develop` use old easy_install dependency processing.
-# It can treat binary console scripts from wheel eggs as UTF-8 metadata and
-# explode on packages such as ninja. Preinstall the deps with pip, then run
-# develop with --no-deps.
-#
-# Do not `import aiter` during docker build. Importing AITER can trigger JIT/GPU
-# arch detection through rocminfo, and docker build does not have the runtime
-# /dev/kfd and /dev/dri device wiring from Compose.
+# Build/install AITER from the selected commit.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     cd /opt/r9700-vllm/src \
     && rm -rf aiter \
@@ -164,21 +139,16 @@ print('AITER module spec:', spec.origin)
 PY
 RUN check-rocm-torch
 
-# Clone vLLM, apply the pinned RDNA4/R9700 patch stack, then build/install it for ROCm.
-# Build vLLM itself with --no-deps so pip does not replace ROCm torch/triton
-# with PyPI CUDA/NVIDIA wheels.
+# Build vLLM directly from the selected ref in the RDNA4 fork. VLLM_REF defaults
+# to rdna4-dev and may be overridden with any branch, tag, or commit.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     cd /opt/r9700-vllm/src \
     && rm -rf vllm \
     && git clone "${VLLM_REPO}" vllm \
     && cd vllm \
-    && git remote rename origin upstream \
-    && git remote add ggz14 https://github.com/GGZ14/vllm.git \
-    && git remote add ar https://github.com/A-R-Dhedeep-Reddy/vllm.git \
-    && git remote add feiyehua https://github.com/feiyehua/vllm.git \
-    && VLLM_BASE_COMMIT="${VLLM_BASE_COMMIT}" apply-vllm-stack \
-    && git checkout "${VLLM_FINAL_BRANCH}" \
-    && git rev-parse HEAD | tee /opt/r9700-vllm/build-info/vllm.final.commit.txt \
+    && git checkout "${VLLM_REF}" \
+    && git rev-parse HEAD | tee /opt/r9700-vllm/build-info/vllm.commit.txt \
+    && printf '%s\n' "${VLLM_REF}" | tee /opt/r9700-vllm/build-info/vllm.ref.txt \
     && unset SCCACHE_BUCKET SCCACHE_REGION SCCACHE_ENDPOINT SCCACHE_S3_USE_SSL SCCACHE_S3_KEY_PREFIX \
              SCCACHE_IDLE_TIMEOUT SCCACHE_ERROR_LOG SCCACHE_LOG RUSTC_WRAPPER \
              CMAKE_C_COMPILER_LAUNCHER CMAKE_CXX_COMPILER_LAUNCHER \
@@ -188,9 +158,6 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
     && check-rocm-torch
 
-# After the wheel is installed, read vLLM's own package metadata, filter only
-# CUDA/NVIDIA-sensitive package names, and install the remaining runtime
-# dependencies under a constraints file that pins the ROCm torch/triton/numpy stack.
 RUN python - <<'PY'
 import importlib.metadata as md
 from pathlib import Path
@@ -212,14 +179,8 @@ from packaging.requirements import Requirement
 from pathlib import Path
 
 skip_exact = {
-    'torch',
-    'torchvision',
-    'torchaudio',
-    'triton',
-    'triton-kernels',
-    'cuda-toolkit',
-    'cuda-bindings',
-    'cuda-pathfinder',
+    'torch', 'torchvision', 'torchaudio', 'triton', 'triton-kernels',
+    'cuda-toolkit', 'cuda-bindings', 'cuda-pathfinder',
 }
 skip_prefixes = ('nvidia-', 'cuda-')
 requirements = []
@@ -248,9 +209,6 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       -r /tmp/vllm-runtime-requirements.txt \
     && check-rocm-torch
 
-# The direct vLLM install above intentionally uses --no-deps to protect the
-# ROCm torch/triton stack. Hydrate known non-GPU transitive runtime deps
-# explicitly, without -U, and keep the ROCm guard active immediately after.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     python -m pip install --break-system-packages --ignore-installed \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
@@ -270,8 +228,6 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
       sse-starlette typing-inspection uvicorn typer \
     && check-rocm-torch
 
-# peft may need accelerate at runtime, but installing accelerate normally after
-# ROCm torch is present can make pip try to replace torch. Install it isolated.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
     python -m pip install --break-system-packages --ignore-installed --no-deps \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
@@ -310,14 +266,6 @@ import vllm
 print('vLLM loaded from:', vllm.__file__)
 PY
 RUN check-rocm-torch
-
-# Pull the launch wrapper, but keep it runtime-overridable with VLLM_LAUNCH_SCRIPT.
-RUN cd /opt/r9700-vllm \
-    && rm -rf launcher \
-    && git clone "${LAUNCHER_REPO}" launcher \
-    && cd launcher \
-    && git checkout "${LAUNCHER_REF}" \
-    && git rev-parse HEAD | tee /opt/r9700-vllm/build-info/launcher.commit.txt
 
 EXPOSE 8000
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/r9700-entrypoint"]
