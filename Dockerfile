@@ -91,11 +91,12 @@ PY
 RUN chmod +x /usr/local/bin/check-rocm-torch
 
 # Use AMD's gfx120X-all ROCm 7.13.0 wheel repository and exact Technology
-# Preview package versions. --break-system-packages is required because this
-# sealed image intentionally uses Ubuntu's system Python rather than a venv.
+# Preview package versions. --ignore-installed prevents pip from trying to
+# uninstall apt-owned Python packages that do not have pip RECORD metadata.
 RUN python -m pip install \
       --break-system-packages \
       --force-reinstall \
+      --ignore-installed \
       --no-cache-dir \
       --index-url "${PYTORCH_INDEX_URL}" \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
