@@ -2,7 +2,7 @@
 
 Opinionated Docker build for running a custom ROCm/vLLM/AITER stack on an AMD Radeon RX 9700-class RDNA4 Linux host.
 
-This repo exists because the current RDNA4 software path is still spicy. The goal is to turn the manual container setup into something repeatable, pinned, and much easier to iterate on.
+This repo exists because the current RDNA4 software path is still spicy. The goal is to turn the manual container setup into something repeatable and much easier to iterate on.
 
 ## What this builds
 
@@ -13,9 +13,9 @@ The image:
 - uses system Python inside the image, with no venv;
 - keeps Debian's apt-installed Python build tooling in place to avoid `RECORD file not found` uninstall failures from `pip`, `wheel`, `setuptools`, and friends;
 - builds AITER from a pinned commit;
-- builds vLLM from a pinned base commit plus the RDNA4/R9700 patch stack;
-- pulls `launch_vllm.py` from `magiccodingman/VllmLaunchScriptR9700`;
-- leaves vLLM/AITER runtime flags to `launch_vllm.py` instead of baking them into Docker;
+- clones and builds vLLM directly from `magiccodingman/vllm-rdna4`;
+- uses the `rdna4-dev` branch by default, with an optional `VLLM_REF` override;
+- launches the installed `vllm serve` command directly;
 - keeps Hugging Face, Torch, Triton, vLLM, and pip caches under `/cache`.
 
 ## Host ROCm driver reality check
@@ -28,8 +28,6 @@ The host Linux machine still needs working GPU device access:
 /dev/kfd
 /dev/dri
 ```
-
-The container then receives those devices through Docker Compose.
 
 Run this first on the R9700 host:
 
@@ -66,6 +64,31 @@ MODEL_DIR=/mnt/fastdisk/ai-models
 
 Do **not** put the model path in `.env`. The actual model is a vLLM runtime argument.
 
+## Select the vLLM source ref
+
+The default source is:
+
+```dotenv
+VLLM_REPO=https://github.com/magiccodingman/vllm-rdna4.git
+VLLM_REF=rdna4-dev
+```
+
+`VLLM_REF` is passed to `git checkout`, so it may be changed to `main`, another branch, a tag, or a commit before building.
+
+For example:
+
+```bash
+VLLM_REF=main python3 scripts/r9700-vllm.py build
+```
+
+or set it in `.env`:
+
+```dotenv
+VLLM_REF=main
+```
+
+No external vLLM PR branches are fetched, merged, or cherry-picked by this repository. All required RDNA4 code changes are expected to already exist in the selected ref of `vllm-rdna4`.
+
 ## Build
 
 ```bash
@@ -78,11 +101,16 @@ or directly:
 docker compose build
 ```
 
-The vLLM patch-stack script verifies fork branch tips before cherry-picking. That keeps the build pinned instead of silently following moving PR branches.
+The selected ref and resolved commit are recorded inside the image under:
+
+```text
+/opt/r9700-vllm/build-info/vllm.ref.txt
+/opt/r9700-vllm/build-info/vllm.commit.txt
+```
 
 ## Launch a model
 
-Use the helper and pass vLLM args like normal:
+Use the helper and pass vLLM arguments normally:
 
 ```bash
 python3 scripts/r9700-vllm.py serve --model /models/YourModel --tensor-parallel-size 2
@@ -94,7 +122,7 @@ There is also a convenience positional form:
 python3 scripts/r9700-vllm.py serve /models/YourModel --tensor-parallel-size 2
 ```
 
-Both forms launch the server detached, remove any old `r9700-vllm` container first, and keep the service ports enabled.
+Both forms launch the installed `vllm serve` command directly, start the server detached, remove any old `r9700-vllm` container first, and keep the service ports enabled.
 
 Foreground one-shot launch:
 
@@ -148,23 +176,19 @@ The helper removes the old container before starting the new one.
 
 ## Runtime flags
 
-Do not put the vLLM/AITER runtime tuning flags in the Dockerfile unless they are truly container plumbing.
+Runtime behavior now comes from the environment and the arguments passed to `vllm serve`.
 
-Put model/runtime behavior in `launch_vllm.py`, for example:
+For example:
 
-```python
-os.environ["VLLM_ROCM_USE_AITER"] = "1"
-os.environ["FLASH_ATTENTION_TRITON_AMD_ENABLE"] = "FALSE"
-os.environ["VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION"] = "1"
+```bash
+VLLM_ROCM_USE_AITER=1 \
+VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION=1 \
+python3 scripts/r9700-vllm.py serve \
+  --model /models/YourModel \
+  --tensor-parallel-size 2
 ```
 
-The Dockerfile only sets stable path/cache/compiler basics.
-
-To use a local launch script without rebuilding, uncomment this in `docker-compose.yml`:
-
-```yaml
-# - ./launch_vllm.py:/opt/r9700-vllm/launcher/launch_vllm.py:ro
-```
+Stable path/cache/compiler basics remain in the Docker image. Model-specific flags should be supplied at runtime rather than baked into the image.
 
 ## API access
 
@@ -219,7 +243,6 @@ Dockerfile
 docker-compose.yml
 .env.example
 docker/
-  apply-vllm-stack.sh
   r9700-entrypoint.sh
   verify-rocm.py
 scripts/
