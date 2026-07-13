@@ -20,6 +20,30 @@ export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/cache/pip}"
 
 mkdir -p "$XDG_CACHE_HOME" "$HF_HOME" "$HUGGINGFACE_HUB_CACHE" "$TORCH_HOME" "$TRITON_CACHE_DIR" "$VLLM_CACHE_ROOT" /logs
 
+# ROCm 7.13 Technology Preview does not currently provide the AMDSMI Python
+# package expected by vLLM's ROCm platform discovery. Pin the validated version
+# and install it only when the image does not already contain the exact release.
+AMDSMI_VERSION="${AMDSMI_VERSION:-7.0.2}"
+if ! python - "$AMDSMI_VERSION" <<'PY'
+import importlib.metadata as md
+import sys
+
+expected = sys.argv[1]
+try:
+    installed = md.version("amdsmi")
+except md.PackageNotFoundError:
+    raise SystemExit(1)
+
+raise SystemExit(0 if installed == expected else 1)
+PY
+then
+  echo "[entrypoint] Installing amdsmi==${AMDSMI_VERSION} for ROCm device discovery."
+  python -m pip install \
+    --break-system-packages \
+    --no-cache-dir \
+    "amdsmi==${AMDSMI_VERSION}"
+fi
+
 has_model_arg() {
   local arg
   for arg in "$@"; do

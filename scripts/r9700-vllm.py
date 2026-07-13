@@ -15,25 +15,24 @@ from pathlib import Path
 
 DEFAULT_CONTAINER = "r9700-vllm"
 DEFAULT_SERVICE = "r9700-vllm"
-DEFAULT_IMAGE = "r9700-vllm:rocm724"
+DEFAULT_IMAGE = "r9700-vllm:rocm7130-preview"
 DEFAULT_COMPOSE_FILE = "docker-compose.yml"
 
 ROCM_STACK_PRESETS = {
     "preview": {
-        "IMAGE_NAME": "r9700-vllm:rocm724",
-        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-24.04:7.2.4-complete",
-        "PYTORCH_INDEX_URL": "https://download.pytorch.org/whl/rocm7.2",
-        "PYTORCH_PACKAGES": "torch torchvision torchaudio",
-        "AMD_TRITON_INDEX_URL": "https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/",
-        "TRITON_PACKAGES": "triton==3.7.0 triton-kernels==1.0.0",
-    },
-    "stable": {
-        "IMAGE_NAME": "r9700-vllm:rocm724",
-        "ROCM_BASE_IMAGE": "rocm/dev-ubuntu-24.04:7.2.4-complete",
-        "PYTORCH_INDEX_URL": "https://download.pytorch.org/whl/rocm7.2",
-        "PYTORCH_PACKAGES": "torch torchvision torchaudio",
-        "AMD_TRITON_INDEX_URL": "https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/",
-        "TRITON_PACKAGES": "triton==3.7.0 triton-kernels==1.0.0",
+        "IMAGE_NAME": "r9700-vllm:rocm7130-preview",
+        "ROCM_BASE_IMAGE": "ubuntu:24.04",
+        "ROCM_VERSION": "7.13.0",
+        "ROCM_TARBALL_URL": (
+            "https://repo.amd.com/rocm/tarball/"
+            "therock-dist-linux-gfx120X-all-7.13.0.tar.gz"
+        ),
+        "PYTORCH_INDEX_URL": "https://repo.amd.com/rocm/whl/gfx120X-all/",
+        "PYTORCH_PACKAGES": (
+            "torch==2.11.0+rocm7.13.0 "
+            "torchvision==0.26.0+rocm7.13.0 "
+            "torchaudio==2.11.0+rocm7.13.0"
+        ),
     },
 }
 
@@ -161,12 +160,12 @@ Commands:
   status               Show docker compose service status
 
 Environment:
-  ROCM_STACK           Stack preset: preview, stable, or custom. Default comes from .env/Compose defaults.
+  ROCM_STACK           Stack preset: preview or custom. Default comes from .env/Compose defaults.
   R9700_ROCM_STACK     Also accepted; overrides ROCM_STACK when exported.
   R9700_CONTAINER      Container name override, default r9700-vllm
   CONTAINER_NAME       Also accepted for compose/.env compatibility
   R9700_SERVICE        Compose service override, default r9700-vllm
-  R9700_IMAGE          Image tag override, default r9700-vllm:rocm724
+  R9700_IMAGE          Image tag override, default r9700-vllm:rocm7130-preview
   IMAGE_NAME           Also accepted for compose/.env compatibility
   R9700_COMPOSE_FILE   Compose file override, default docker-compose.yml
   COMPOSE_FILE         Also accepted
@@ -174,9 +173,8 @@ Environment:
 
 Examples:
   python scripts/r9700-vllm.py build
-  ROCM_STACK=stable python scripts/r9700-vllm.py build
   ROCM_STACK=preview python scripts/r9700-vllm.py build
-  ROCM_STACK=custom ROCM_BASE_IMAGE=rocm/dev-ubuntu-24.04:7.2.4-complete python scripts/r9700-vllm.py build
+  ROCM_STACK=custom ROCM_TARBALL_URL=https://example.invalid/rocm.tar.gz python scripts/r9700-vllm.py build
   python scripts/r9700-vllm.py serve --model /models/MyModel --tensor-parallel-size 2
   python scripts/r9700-vllm.py serve /models/MyModel --tensor-parallel-size 2
   python scripts/r9700-vllm.py logs

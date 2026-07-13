@@ -1,15 +1,16 @@
 # syntax=docker/dockerfile:1.7
 
-ARG ROCM_BASE_IMAGE=rocm/dev-ubuntu-24.04:7.2.4-complete
+ARG ROCM_BASE_IMAGE=ubuntu:24.04
 FROM ${ROCM_BASE_IMAGE}
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/rocm7.2
-ARG PYTORCH_PACKAGES="torch torchvision torchaudio"
-ARG AMD_TRITON_INDEX_URL=https://pypi.amd.com/triton/release_/rocm-7.2.0/simple/
-ARG TRITON_PACKAGES="triton==3.7.0 triton-kernels==1.0.0"
+ARG ROCM_VERSION=7.13.0
+ARG ROCM_TARBALL_URL=https://repo.amd.com/rocm/tarball/therock-dist-linux-gfx120X-all-7.13.0.tar.gz
+ARG PYTORCH_INDEX_URL=https://repo.amd.com/rocm/whl/gfx120X-all/
+ARG PYTORCH_PACKAGES="torch==2.11.0+rocm7.13.0 torchvision==0.26.0+rocm7.13.0 torchaudio==2.11.0+rocm7.13.0"
+ARG TRITON_PACKAGE=triton==3.6.0+rocm7.13.0
 ARG AITER_REPO=https://github.com/ROCm/aiter.git
 ARG AITER_COMMIT=55d6e42f9b809f0c40b23562525fe7354622b085
 ARG VLLM_REPO=https://github.com/magiccodingman/vllm-rdna4.git
@@ -21,8 +22,8 @@ ARG PIP_RETRIES=100
 
 ENV ROCM_PATH=/opt/rocm \
     HIP_PATH=/opt/rocm \
-    PATH=/opt/rocm/bin:/opt/rocm/llvm/bin:${PATH} \
-    LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib64:${LD_LIBRARY_PATH} \
+    PATH=/opt/rocm/bin:/opt/rocm/lib/llvm/bin:${PATH} \
+    LD_LIBRARY_PATH=/opt/rocm/lib:${LD_LIBRARY_PATH} \
     XDG_CACHE_HOME=/cache \
     HF_HOME=/cache/huggingface \
     HUGGINGFACE_HUB_CACHE=/cache/huggingface/hub \
@@ -52,43 +53,86 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential cmake ninja-build pkg-config \
       python3 python3-dev python3-pip python3-setuptools python3-wheel python3-packaging python3-setuptools-scm python-is-python3 \
       rustc cargo \
-      numactl libnuma-dev \
+      numactl libnuma-dev libatomic1 libquadmath0 libgfortran5 \
       jq less vim-tiny procps tini \
     && git lfs install --system \
     && mkdir -p /opt/r9700-vllm/src /opt/r9700-vllm/build-info \
                 /cache/pip /cache/vllm /cache/torch /cache/triton /cache/huggingface /logs \
     && rm -rf /var/lib/apt/lists/*
 
+# ROCm 7.13.0 Technology Preview is distributed through TheRock. Install the
+# official gfx120X tarball as the complete userspace/development stack under
+# /opt/rocm so AITER and vLLM build against the same ROCm version as PyTorch.
+RUN wget --progress=dot:giga -O /tmp/rocm-${ROCM_VERSION}.tar.gz "${ROCM_TARBALL_URL}" \
+    && mkdir -p "${ROCM_PATH}" \
+    && tar -xf /tmp/rocm-${ROCM_VERSION}.tar.gz -C "${ROCM_PATH}" \
+    && rm -f /tmp/rocm-${ROCM_VERSION}.tar.gz \
+    && printf '%s\n' "${ROCM_VERSION}" | tee /opt/r9700-vllm/build-info/rocm.version.txt \
+    && test -x "${ROCM_PATH}/bin/hipcc" \
+    && "${ROCM_PATH}/bin/hipcc" --version
+
 RUN cat > /usr/local/bin/check-rocm-torch <<'PY'
 #!/usr/bin/env python3
+import importlib.metadata as md
 import torch
 
+expected_torch = "2.11.0+rocm7.13.0"
+expected_rocm = "7.13.0"
+expected_hip_release = "7.13"
+expected_triton = "3.6.0+rocm7.13.0"
+rocm = md.version("rocm")
+triton = md.version("triton")
+try:
+    triton_kernels = md.version("triton-kernels")
+except md.PackageNotFoundError:
+    triton_kernels = None
 hip = getattr(torch.version, "hip", None)
+hip_release = ".".join(hip.split(".")[:2]) if hip else None
 cuda = getattr(torch.version, "cuda", None)
 print("torch:", torch.__version__)
+print("rocm package:", rocm)
 print("hip:", hip)
 print("cuda:", cuda)
+print("triton:", triton)
+print("triton-kernels:", triton_kernels)
 print("torch file:", torch.__file__)
-assert hip is not None, "BROKEN: torch is not ROCm/HIP-enabled"
+assert torch.__version__ == expected_torch, (
+    f"BROKEN: expected torch {expected_torch}, got {torch.__version__}"
+)
+assert rocm == expected_rocm, (
+    f"BROKEN: expected ROCm package {expected_rocm}, got {rocm}"
+)
+assert hip_release == expected_hip_release, (
+    f"BROKEN: expected HIP release {expected_hip_release}.x, got {hip}"
+)
+assert triton == expected_triton, (
+    f"BROKEN: expected Triton {expected_triton}, got {triton}"
+)
+assert triton_kernels is None, (
+    f"BROKEN: unexpected triton-kernels package {triton_kernels}"
+)
 assert cuda is None, "BROKEN: CUDA torch replaced the ROCm torch stack"
 PY
 RUN chmod +x /usr/local/bin/check-rocm-torch
 
-RUN --mount=type=cache,target=/cache/pip,sharing=locked \
-    python -m pip install --break-system-packages \
+# Use AMD's gfx120X-all ROCm 7.13.0 wheel repository and exact Technology
+# Preview package versions. --ignore-installed prevents pip from trying to
+# uninstall apt-owned Python packages that do not have pip RECORD metadata.
+RUN python -m pip install \
+      --break-system-packages \
+      --force-reinstall \
+      --ignore-installed \
+      --no-cache-dir \
       --index-url "${PYTORCH_INDEX_URL}" \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
       ${PYTORCH_PACKAGES} \
     && check-rocm-torch
 
+# PyTorch installs its matching ROCm 7.13 Triton dependency from the same AMD
+# gfx120X index. Do not replace it with a Triton wheel from an older ROCm repo.
 RUN --mount=type=cache,target=/cache/pip,sharing=locked \
-    python -m pip install --break-system-packages --force-reinstall --ignore-installed \
-      --timeout "${PIP_DEFAULT_TIMEOUT}" \
-      --retries "${PIP_RETRIES}" \
-      --extra-index-url "${AMD_TRITON_INDEX_URL}" \
-      ${TRITON_PACKAGES} \
-    && python -m pip install --break-system-packages --ignore-installed \
+    python -m pip install --break-system-packages --ignore-installed \
       --timeout "${PIP_DEFAULT_TIMEOUT}" \
       --retries "${PIP_RETRIES}" \
       "numpy==2.1.3" \
@@ -137,7 +181,38 @@ spec = importlib.util.find_spec('aiter')
 assert spec is not None, 'aiter module spec not found'
 print('AITER module spec:', spec.origin)
 PY
-RUN check-rocm-torch
+
+# flydsl/AITER dependency resolution can pull AMD's older ROCm 7.2 Triton pair
+# from PyPI. Remove that contamination and restore the official ROCm 7.13 Triton
+# wheel from the gfx120X index before validating or building vLLM.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip uninstall -y triton triton-kernels pytorch-triton-rocm || true \
+    && python -m pip install --break-system-packages --ignore-installed --no-deps \
+      --index-url "${PYTORCH_INDEX_URL}" \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      "${TRITON_PACKAGE}" \
+    && check-rocm-torch
+
+# The ROCm SMI CMake package pulled in by PyTorch requires libdrm's pkg-config
+# metadata. Install the development package here, after AITER, so the expensive
+# successful AITER build remains cached while vLLM gets the system dependency it
+# needs for CMake configuration.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libdrm-dev \
+    && pkg-config --modversion libdrm \
+    && rm -rf /var/lib/apt/lists/*
+
+# PyTorch's ROCm wheels install modern setuptools. Overlay a matching packaging
+# release in /usr/local so setuptools does not fall back to Ubuntu's older
+# apt-owned packaging module during vLLM editable metadata generation.
+RUN --mount=type=cache,target=/cache/pip,sharing=locked \
+    python -m pip install --break-system-packages --ignore-installed \
+      --timeout "${PIP_DEFAULT_TIMEOUT}" \
+      --retries "${PIP_RETRIES}" \
+      "packaging>=24.2" \
+    && python -c "import packaging, packaging.licenses; print('packaging:', packaging.__version__)" \
+    && check-rocm-torch
 
 # Build vLLM directly from the selected ref in the RDNA4 fork. VLLM_REF defaults
 # to rdna4-dev and may be overridden with any branch, tag, or commit.
@@ -155,6 +230,7 @@ RUN --mount=type=cache,target=/cache/pip,sharing=locked \
              CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_VISIBLE_DEVICES TORCH_CUDA_ARCH_LIST NVCC_PREPEND_FLAGS \
     && export CC=/usr/bin/gcc CXX=/usr/bin/g++ CMAKE_C_COMPILER=/usr/bin/gcc CMAKE_CXX_COMPILER=/usr/bin/g++ \
     && export VLLM_TARGET_DEVICE=rocm MAX_JOBS="${MAX_JOBS}" PYTORCH_ROCM_ARCH="${PYTORCH_ROCM_ARCH}" \
+    && export CMAKE_ARGS="-DGPU_TARGETS=${PYTORCH_ROCM_ARCH} -DAMDGPU_TARGETS=${PYTORCH_ROCM_ARCH}" \
     && python -m pip install --break-system-packages --no-build-isolation --no-deps -v -e . 2>&1 | tee /opt/r9700-vllm/build-info/vllm-build.log \
     && check-rocm-torch
 
@@ -180,7 +256,7 @@ from pathlib import Path
 
 skip_exact = {
     'torch', 'torchvision', 'torchaudio', 'triton', 'triton-kernels',
-    'cuda-toolkit', 'cuda-bindings', 'cuda-pathfinder',
+    'pytorch-triton-rocm', 'cuda-toolkit', 'cuda-bindings', 'cuda-pathfinder',
 }
 skip_prefixes = ('nvidia-', 'cuda-')
 requirements = []
